@@ -10,6 +10,10 @@ Hermes Desktop Lite 是基于 Rust 和 GPUI 的轻量级 Hermes Agent 桌面客�
 | 网关通信 | Tokio 调度异步 I/O。tokio-tungstenite 通过 WebSocket 收发会话请求和流式事件，reqwest 通过 HTTP 读取历史记录、获取附件和下载文件。 |
 | 内容渲染 | markdown 将消息解析为语法树，客户端用 GPUI 绘制段落、表格和代码块。image 解码图片，calamine 解析工作簿。 |
 
+## Windows 运行库
+
+Windows x64 版启动时若提示缺少 `VCRUNTIME140.dll` 等 VC++ 运行库文件，安装 Microsoft Visual C++ v14 x64 可再发行组件后重新启动客户端。[微软官方下载](https://aka.ms/vc14/vc_redist.x64.exe)
+
 ## Windows 性能
 
 每组测量中，两个客户端连接同一远程网关，使用同一 Profile，各恢复一个聊天标签和同一段短文本历史（一条提问、一条回复）。Lite 使用 v0.1.0 发布的 Windows x64 EXE，官方客户端使用上游提交 `e96221fa73d2` 的本机构建（Electron 44.10.2）。
