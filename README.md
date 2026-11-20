@@ -1,5 +1,7 @@
 # Hermes Desktop Lite
 
+简体中文 · [English](README.en.md)
+
 Hermes Desktop Lite 是基于 Rust 和 GPUI 的轻量级 Hermes Agent 桌面客户端。
 
 ## 技术栈
