@@ -330,6 +330,10 @@ pub(super) fn enable_x11_client_chrome(window: &Window) -> bool {
                 &[2, 0, 0, 0, 0],
             )?
             .check()?;
+        // Some window managers read Motif hints only when the window is mapped.
+        // GPUI has already mapped the window by the time its root view is created.
+        connection.unmap_window(handle.window.get())?.check()?;
+        connection.map_window(handle.window.get())?.check()?;
         connection.flush()?;
         Ok(())
     };

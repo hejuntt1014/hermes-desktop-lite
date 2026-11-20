@@ -572,10 +572,14 @@ impl Render for Desktop {
             .children(question_overlay)
             .children(self.rewrite_overlay(window, cx))
             .children(self.queue_editor_panel(window, cx))
-            .children(linux_resize_edges(
-                self.has_linux_client_chrome(window),
-                window,
-            ))
+            .children(
+                (self.has_linux_client_chrome(window)
+                    && !window.is_maximized()
+                    && !window.is_fullscreen())
+                .then(linux_resize_edges)
+                .into_iter()
+                .flatten(),
+            )
     }
 }
 
@@ -2277,9 +2281,8 @@ fn new_chat_intro(width: gpui::Pixels, window: &Window) -> Div {
         )
 }
 
-fn linux_resize_edges(enabled: bool, window: &Window) -> impl Iterator<Item = gpui::Stateful<Div>> {
+fn linux_resize_edges() -> impl Iterator<Item = gpui::Stateful<Div>> {
     use gpui::{CursorStyle, MouseButton, ResizeEdge};
-    let enabled = enabled && !window.is_maximized() && !window.is_fullscreen();
     let edge = px(4.);
     let corner = px(8.);
     [
@@ -2326,17 +2329,15 @@ fn linux_resize_edges(enabled: bool, window: &Window) -> impl Iterator<Item = gp
     ]
     .into_iter()
     .enumerate()
-    .filter_map(move |(index, (edge, cursor, element))| {
-        enabled.then(|| {
-            element
-                .id(("window-resize", index))
-                .absolute()
-                .cursor(cursor)
-                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    cx.stop_propagation();
-                    window.start_window_resize(edge);
-                })
-        })
+    .map(|(index, (edge, cursor, element))| {
+        element
+            .id(("window-resize", index))
+            .absolute()
+            .cursor(cursor)
+            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                cx.stop_propagation();
+                window.start_window_resize(edge);
+            })
     })
 }
 
