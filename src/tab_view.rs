@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::rc::Rc;
 
 use crate::{
@@ -147,7 +149,7 @@ fn session_actions(
     let rename = target.clone();
     let mut menu = menu.min_w(px(154.)).item(session_menu_item(
         desktop,
-        "重命名…",
+        tr("重命名…"),
         icons::RENAME,
         connected,
         move |this, window, cx| this.begin_rename(rename.clone(), window, cx),
@@ -159,9 +161,9 @@ fn session_actions(
             .item(session_menu_item(
                 desktop,
                 if summary.pinned {
-                    "取消置顶"
+                    tr("取消置顶")
                 } else {
-                    "置顶"
+                    tr("置顶")
                 },
                 icons::PIN,
                 connected,
@@ -178,9 +180,9 @@ fn session_actions(
             .item(session_menu_item(
                 desktop,
                 if summary.unread {
-                    "标记为已读"
+                    tr("标记为已读")
                 } else {
-                    "标记为未读"
+                    tr("标记为未读")
                 },
                 if summary.unread {
                     icons::MAIL_READ
@@ -206,7 +208,7 @@ fn session_actions(
     menu = menu
         .item(session_menu_item(
             desktop,
-            "复制 ID",
+            tr("复制 ID"),
             crate::icons::COPY,
             true,
             move |_, _, cx| {
@@ -216,7 +218,7 @@ fn session_actions(
         .separator()
         .item(session_menu_item(
             desktop,
-            "分叉",
+            tr("分叉"),
             crate::icons::FORK,
             connected,
             move |this, window, cx| {
@@ -225,7 +227,7 @@ fn session_actions(
         ))
         .item(session_menu_item(
             desktop,
-            "导出 Markdown",
+            tr("导出 Markdown"),
             icons::CLOUD_DOWNLOAD,
             connected,
             move |this, _, cx| {
@@ -238,7 +240,7 @@ fn session_actions(
         ))
         .item(session_menu_item(
             desktop,
-            "导出 JSON",
+            tr("导出 JSON"),
             icons::CLOUD_DOWNLOAD,
             connected,
             move |this, _, cx| {
@@ -253,9 +255,9 @@ fn session_actions(
         menu = menu.separator().item(session_menu_item(
             desktop,
             if summary.archived {
-                "取消归档"
+                tr("取消归档")
             } else {
-                "归档"
+                tr("归档")
             },
             icons::ARCHIVE,
             connected,
@@ -288,7 +290,7 @@ fn appearance_submenu(
     let target = target.clone();
     menu.submenu_with_icon(
         Some(Icon::default().path(icons::SESSION_PALETTE)),
-        "外观",
+        tr("外观"),
         window,
         cx,
         move |submenu, _, submenu_cx| {
@@ -376,7 +378,7 @@ fn appearance_submenu(
                                 .cursor_pointer()
                                 .hover(|style| style.bg(rgb(0xe8eef9)).text_color(rgb(INK)))
                                 .child(svg_symbol(icons::NO_COLOR, 13., MUTED))
-                                .child("无颜色")
+                                .child(tr("无颜色"))
                                 .on_click(move |_, window, cx| {
                                     cx.stop_propagation();
                                     clear(None, window, cx);
@@ -420,7 +422,7 @@ pub(super) fn sidebar_menu(
     let menu = menu
         .item(session_menu_item(
             desktop,
-            "在新标签页打开",
+            tr("在新标签页打开"),
             icons::LINK_EXTERNAL,
             true,
             move |this, window, cx| {
@@ -490,7 +492,7 @@ fn chat_tab_menu(
             .separator()
             .item(session_menu_item(
                 desktop,
-                "重新加载",
+                tr("重新加载"),
                 icons::REFRESH,
                 connected,
                 move |this, _, cx| {
@@ -501,15 +503,20 @@ fn chat_tab_menu(
     }
 
     for (label, glyph, scope, enabled) in [
-        ("关闭", icons::TAB_CLOSE, TabClose::Current, true),
+        (tr("关闭"), icons::TAB_CLOSE, TabClose::Current, true),
         (
-            "关闭其他",
+            tr("关闭其他"),
             icons::CLOSE_OTHERS,
             TabClose::Others,
             has_other_tabs,
         ),
-        ("关闭右侧", icons::RIGHT, TabClose::Right, has_tabs_to_right),
-        ("全部关闭", icons::CLEAR_ALL, TabClose::All, true),
+        (
+            tr("关闭右侧"),
+            icons::RIGHT,
+            TabClose::Right,
+            has_tabs_to_right,
+        ),
+        (tr("全部关闭"), icons::CLEAR_ALL, TabClose::All, true),
     ] {
         let id = id.to_owned();
         menu = menu.item(session_menu_item(
@@ -617,7 +624,7 @@ impl Desktop {
             let menu_desktop = desktop.clone();
             let tooltip_desktop = desktop.clone();
             let tooltip_tab = tab.id.clone();
-            let title = SharedString::from(tab.title.clone());
+            let title = SharedString::from(tab.display_title().to_owned());
             let profile = self.tab_profile(tab);
             let title_color = tab
                 .session
@@ -638,15 +645,15 @@ impl Desktop {
             let tooltip: SharedString = match pending {
                 Some(prompt) => format!(
                     "{} · {} · {}",
-                    tab.title,
+                    title,
                     profile_badge,
                     if prompt.clarify {
-                        "等待回答"
+                        tr("等待回答")
                     } else {
-                        "等待审批"
+                        tr("等待审批")
                     }
                 ),
-                None => format!("{} · {}", tab.title, profile_badge),
+                None => format!("{} · {}", title, profile_badge),
             }
             .into();
             let unread = tab
@@ -778,7 +785,7 @@ impl Desktop {
                         .invisible()
                         .group_hover("chat-tab", |style| style.visible())
                         .child(
-                            icon_button("close-tab", icons::TAB_CLOSE, "关闭标签")
+                            icon_button("close-tab", icons::TAB_CLOSE, tr("关闭标签"))
                                 .size(px(18.))
                                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation()

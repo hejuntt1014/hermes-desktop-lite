@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, bail};
@@ -229,7 +231,7 @@ impl Desktop {
                         this.review.diff = None;
                     }
                     Ok(Err(error)) => this.review.list_error = Some(error.to_string().into()),
-                    Err(_) => this.review.list_error = Some("无法读取工作区变更".into()),
+                    Err(_) => this.review.list_error = Some(tr("无法读取工作区变更").into()),
                 }
                 cx.notify();
             });
@@ -270,7 +272,7 @@ impl Desktop {
                 }
             }
             let value = scope.get(&gateway, route, query, false).await?;
-            let raw = value["diff"].as_str().context("网关未返回有效差异")?;
+            let raw = value["diff"].as_str().context(tr("网关未返回有效差异"))?;
             Ok::<_, anyhow::Error>(parse_diff(raw))
         });
         let abort = fetch.abort_handle();
@@ -281,7 +283,7 @@ impl Desktop {
                 match result {
                     Ok(Ok(diff)) => this.review.diff = Some(diff),
                     Ok(Err(error)) => this.review.diff_error = Some(error.to_string().into()),
-                    Err(_) => this.review.diff_error = Some("无法读取文件差异".into()),
+                    Err(_) => this.review.diff_error = Some(tr("无法读取文件差异").into()),
                 }
                 cx.notify();
             });
@@ -297,7 +299,7 @@ impl Desktop {
             .root
             .as_deref()
             .map(file_name)
-            .unwrap_or("工作区")
+            .unwrap_or(tr("工作区"))
             .to_owned()
             .into();
         let header = div()
@@ -327,7 +329,7 @@ impl Desktop {
                     .child(base.chars().take(20).collect::<String>())
             }))
             .child(
-                icon_button("refresh-git-review", "", "刷新变更").on_click(cx.listener(
+                icon_button("refresh-git-review", "", tr("刷新变更")).on_click(cx.listener(
                     |this, _, _, cx| {
                         if this.review.target.is_none() {
                             if let Some(session) = this.selected.clone() {
@@ -349,9 +351,9 @@ impl Desktop {
                 .p(px(2.))
                 .children(
                     [
-                        (Mode::Working, "未提交"),
-                        (Mode::Branch, "分支"),
-                        (Mode::Previous, "对比上一版本"),
+                        (Mode::Working, tr("未提交")),
+                        (Mode::Branch, tr("分支")),
+                        (Mode::Previous, tr("对比上一版本")),
                     ]
                     .into_iter()
                     .enumerate()
@@ -389,13 +391,13 @@ impl Desktop {
         let body = if let Some(error) = &review.list_error {
             center(error.clone())
         } else if review.list_job.is_some() {
-            center("正在读取 Git 变更…".into())
+            center(tr("正在读取 Git 变更…").into())
         } else if !review.loaded {
-            center("正在定位会话工作目录…".into())
+            center(tr("正在定位会话工作目录…").into())
         } else if review.root.is_none() {
-            center("当前目录没有 Git 仓库".into())
+            center(tr("当前目录没有 Git 仓库").into())
         } else if review.files.is_empty() {
-            center("无差异".into())
+            center(tr("无差异").into())
         } else {
             self.review_columns(window, cx)
         };
@@ -462,7 +464,7 @@ impl Desktop {
                                         div()
                                             .text_size(px(10.))
                                             .text_color(rgb(0x6380a0))
-                                            .child("已暂存"),
+                                            .child(tr("已暂存")),
                                     )
                                 })
                                 .child(diff_counts(file.added, file.removed))
@@ -502,7 +504,7 @@ impl Desktop {
     fn diff_element(&self) -> Div {
         let review = &self.review;
         let Some(path) = &review.selected else {
-            return center("选择文件查看差异".into());
+            return center(tr("选择文件查看差异").into());
         };
         let mut head = div()
             .h(px(32.))
@@ -522,18 +524,18 @@ impl Desktop {
         let body = if let Some(error) = &review.diff_error {
             center(error.clone())
         } else if review.diff_job.is_some() {
-            center("正在读取差异…".into())
+            center(tr("正在读取差异…").into())
         } else if let Some(diff) = &review.diff {
             let raw = diff.raw.clone();
             head = head.child(
-                icon_button("copy-git-diff", crate::icons::COPY, "复制原始差异").on_click(
+                icon_button("copy-git-diff", crate::icons::COPY, tr("复制原始差异")).on_click(
                     move |_, _, app| {
                         app.write_to_clipboard(ClipboardItem::new_string(raw.to_string()));
                     },
                 ),
             );
             if diff.rows.is_empty() {
-                center("此文件没有文本差异".into())
+                center(tr("此文件没有文本差异").into())
             } else {
                 let rows = diff.rows.clone();
                 let list = uniform_list("git-diff-lines", rows.len(), move |range, _, _| {
@@ -563,12 +565,12 @@ impl Desktop {
                                 .py_1()
                                 .text_size(px(11.))
                                 .text_color(rgb(0x68788b))
-                                .child("预览仅显示前段差异，可复制全文"),
+                                .child(tr("预览仅显示前段差异，可复制全文")),
                         )
                     })
             }
         } else {
-            center("此文件没有文本差异".into())
+            center(tr("此文件没有文本差异").into())
         };
         div()
             .flex_1()
@@ -686,14 +688,14 @@ async fn load_files(
             )));
         }
         if !matches!(sha.len(), 40 | 64) || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            bail!("网关未返回有效的提交标识");
+            bail!(tr("网关未返回有效的提交标识"));
         }
         query.push(("base", sha.to_owned()));
     }
     let value = target
         .get(gateway, "api/git/review/list", query, false)
         .await?;
-    let list = serde_json::from_value(value).context("网关未返回有效工作区变更")?;
+    let list = serde_json::from_value(value).context(tr("网关未返回有效工作区变更"))?;
     Ok(Some((root, list)))
 }
 

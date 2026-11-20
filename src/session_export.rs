@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::HashMap,
     env,
@@ -52,7 +54,7 @@ impl Desktop {
         let runtime = self.runtime.clone();
         cx.spawn(async move |view, cx| {
             let result = async {
-                let Some(path) = destination.await.context("保存对话框已关闭")?? else {
+                let Some(path) = destination.await.context(tr("保存对话框已关闭"))?? else {
                     return Ok(());
                 };
                 let (target, messages) = runtime
@@ -70,7 +72,13 @@ impl Desktop {
             .await;
             if let Err(error) = result {
                 let _ = view.update(cx, |this, cx| {
-                    this.banner = Some(format!("导出会话失败 · {error}").into());
+                    this.banner = Some(
+                        crate::i18n::format_text!(
+                            "导出会话失败 · {error}",
+                            "Could not export the conversation · {error}"
+                        )
+                        .into(),
+                    );
                     cx.notify();
                 });
             }
@@ -99,7 +107,11 @@ fn export_filename(title: &str, key: &str, format: ExportFormat) -> String {
         .collect();
     format!(
         "{}-{}.{}",
-        if title.is_empty() { "会话" } else { title },
+        if title.is_empty() {
+            tr("会话")
+        } else {
+            title
+        },
         if id.is_empty() { "hermes" } else { &id },
         format.extension()
     )
@@ -111,7 +123,7 @@ fn save_export(
     target: SessionTarget,
     messages: Vec<Value>,
 ) -> Result<()> {
-    let parent = path.parent().context("没有可用的导出目录")?;
+    let parent = path.parent().context(tr("没有可用的导出目录"))?;
     let mut temporary = tempfile::Builder::new()
         .prefix(".hermes-export-")
         .tempfile_in(parent)?;
@@ -141,7 +153,7 @@ fn save_export(
     temporary
         .persist(path)
         .map(drop)
-        .context("无法保存导出的会话")
+        .context(tr("无法保存导出的会话"))
 }
 
 fn write_markdown(
@@ -158,10 +170,22 @@ fn write_markdown(
     writeln!(
         output,
         "# {}\n",
-        escape_inline(if title.is_empty() { "会话" } else { &title })
+        escape_inline(if title.is_empty() {
+            tr("会话")
+        } else {
+            &title
+        })
     )?;
-    writeln!(output, "- 会话 {}", inline_code(&target.id))?;
-    writeln!(output, "- 导出时间 {exported_at}")?;
+    writeln!(
+        output,
+        "{}",
+        crate::i18n::format_text!("- 会话 {}", "- Conversation {}", inline_code(&target.id))
+    )?;
+    writeln!(
+        output,
+        "{}",
+        crate::i18n::format_text!("- 导出时间 {exported_at}", "- Exported at {exported_at}")
+    )?;
     let mut tool_names = HashMap::new();
     for row in messages {
         if row["display_kind"] == "hidden" {
@@ -201,11 +225,11 @@ fn write_markdown(
                 heading(
                     output,
                     if user {
-                        "用户"
+                        tr("用户")
                     } else if tool_only {
-                        "工具调用"
+                        tr("工具调用")
                     } else {
-                        "助手"
+                        tr("助手")
                     },
                     row,
                 )?;
@@ -222,24 +246,34 @@ fn write_markdown(
                     }
                 }
                 if !reason.is_empty() {
-                    writeln!(output, "### 推理\n")?;
+                    writeln!(output, "{}", tr("### 推理\n"))?;
                     fenced(output, "text", reason)?;
                 }
                 if !files.is_empty() || !message.images().is_empty() || !extra_images.is_empty() {
-                    writeln!(output, "### 附件\n")?;
+                    writeln!(output, "{}", tr("### 附件\n"))?;
                     for (path, name) in files {
                         writeln!(
                             output,
-                            "- 文件 {} · {}",
-                            inline_code(name),
-                            inline_code(path)
+                            "{}",
+                            crate::i18n::format_text!(
+                                "- 文件 {} · {}",
+                                "- File {} · {}",
+                                inline_code(name),
+                                inline_code(path)
+                            )
                         )?;
                     }
                     for image in message.images() {
                         match &image.source {
-                            ImageSource::Gateway(path) => {
-                                writeln!(output, "- 远程图片 {}", inline_code(path))?
-                            }
+                            ImageSource::Gateway(path) => writeln!(
+                                output,
+                                "{}",
+                                crate::i18n::format_text!(
+                                    "- 远程图片 {}",
+                                    "- Remote image {}",
+                                    inline_code(path)
+                                )
+                            )?,
                             ImageSource::Inline { url, .. } => {
                                 if url.split_once(";base64,").is_some_and(|(_, payload)| {
                                     !payload.is_empty()
@@ -248,15 +282,38 @@ fn write_markdown(
                                                 || matches!(byte, b'+' | b'/' | b'=')
                                         })
                                 }) {
-                                    writeln!(output, "- ![图片](<{url}>)")?;
+                                    writeln!(
+                                        output,
+                                        "{}",
+                                        crate::i18n::format_text!(
+                                            "- ![图片](<{url}>)",
+                                            "- ![Image](<{url}>)"
+                                        )
+                                    )?;
                                 } else {
-                                    writeln!(output, "- 图片引用 {}", inline_code(url))?;
+                                    writeln!(
+                                        output,
+                                        "{}",
+                                        crate::i18n::format_text!(
+                                            "- 图片引用 {}",
+                                            "- Image reference {}",
+                                            inline_code(url)
+                                        )
+                                    )?;
                                 }
                             }
                         }
                     }
                     for reference in extra_images {
-                        writeln!(output, "- 图片引用 {}", inline_code(reference))?;
+                        writeln!(
+                            output,
+                            "{}",
+                            crate::i18n::format_text!(
+                                "- 图片引用 {}",
+                                "- Image reference {}",
+                                inline_code(reference)
+                            )
+                        )?;
                     }
                     writeln!(output)?;
                 }
@@ -265,14 +322,22 @@ fn write_markdown(
                     let name = function["name"]
                         .as_str()
                         .filter(|name| !name.is_empty())
-                        .unwrap_or("工具");
+                        .unwrap_or(tr("工具"));
                     if let Some(id) = call["id"].as_str() {
                         tool_names.insert(id.to_owned(), name.to_owned());
                     }
                     if tool_only {
                         writeln!(output, "### {}\n", inline_code(name))?;
                     } else {
-                        writeln!(output, "### 调用 {}\n", inline_code(name))?;
+                        writeln!(
+                            output,
+                            "{}",
+                            crate::i18n::format_text!(
+                                "### 调用 {}\n",
+                                "### Call {}\n",
+                                inline_code(name)
+                            )
+                        )?;
                     }
                     let arguments = function
                         .get("arguments")
@@ -290,17 +355,29 @@ fn write_markdown(
                     .iter()
                     .find_map(|key| row[*key].as_str().filter(|name| !name.is_empty()))
                     .or_else(|| tool_names.get(id).map(String::as_str))
-                    .unwrap_or("工具");
-                heading(output, &format!("工具结果 · {}", inline_code(name)), row)?;
+                    .unwrap_or(tr("工具"));
+                heading(
+                    output,
+                    &crate::i18n::format_text!(
+                        "工具结果 · {}",
+                        "Tool result · {}",
+                        inline_code(name)
+                    ),
+                    row,
+                )?;
                 if !id.is_empty() {
-                    writeln!(output, "调用 ID {}\n", inline_code(id))?;
+                    writeln!(
+                        output,
+                        "{}",
+                        crate::i18n::format_text!("调用 ID {}\n", "Call ID {}\n", inline_code(id))
+                    )?;
                 }
                 fenced(output, "text", &text(value))?;
             }
             "system" | "notice" => {
                 let body = text(value);
                 if !body.is_empty() {
-                    heading(output, "系统", row)?;
+                    heading(output, tr("系统"), row)?;
                     fenced(output, "text", &body)?;
                 }
             }

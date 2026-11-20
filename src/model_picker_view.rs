@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     Anchor, AnyElement, App, Context, Div, Focusable, IntoElement, MouseButton, SharedString,
     WeakEntity, div, prelude::*, px, rgb, uniform_list,
@@ -163,7 +165,7 @@ fn catalog_footer(desktop: &WeakEntity<Desktop>, follow_default: bool) -> Div {
             footer.child(
                 option_row("default-model", false)
                     .child(svg_symbol(icons::BACK, 13., MENU_MUTED))
-                    .child("使用 Profile 默认模型")
+                    .child(tr("使用 Profile 默认模型"))
                     .on_click(move |_, window, cx| {
                         let _ = follow.update(cx, |this, cx| {
                             this.follow_model_default(Picker::Model, window, cx)
@@ -175,7 +177,7 @@ fn catalog_footer(desktop: &WeakEntity<Desktop>, follow_default: bool) -> Div {
             option_row("refresh-models", false)
                 .text_color(rgb(MENU_MUTED))
                 .child(svg_symbol(icons::REFRESH, 13., MENU_MUTED))
-                .child("刷新模型")
+                .child(tr("刷新模型"))
                 .on_click(move |_, _, cx| {
                     let _ = refresh.update(cx, |this, cx| this.load_models(true, cx));
                 }),
@@ -193,9 +195,9 @@ fn model_row(row: &ModelMenuRow, desktop: &WeakEntity<Desktop>, index: usize) ->
     let hover = desktop.clone();
     let options = desktop.clone();
     let label = if row.favorite {
-        "取消收藏"
+        tr("取消收藏")
     } else {
-        "收藏模型"
+        tr("收藏模型")
     };
     let flash = model.provider == "deepseek" && model.id.ends_with("-flash");
     let available = row.entry.available;
@@ -205,9 +207,9 @@ fn model_row(row: &ModelMenuRow, desktop: &WeakEntity<Desktop>, index: usize) ->
         .filter(|speed| matches!(*speed, "fast" | "ultrafast"))
         .map(|speed| {
             if speed == "ultrafast" {
-                "Ultrafast"
+                tr("Ultrafast")
             } else {
-                "Fast"
+                tr("Fast")
             }
         });
     let effort_badge = row.effort.as_deref().map(short_effort).map(str::to_owned);
@@ -275,7 +277,7 @@ fn model_row(row: &ModelMenuRow, desktop: &WeakEntity<Desktop>, index: usize) ->
             element.child(model_tag(label))
         })
         .when(
-            row.ultrafast && settings_badge != Some("Ultrafast"),
+            row.ultrafast && settings_badge != Some(tr("Ultrafast")),
             |element| {
                 element.child(
                     div()
@@ -293,7 +295,7 @@ fn model_row(row: &ModelMenuRow, desktop: &WeakEntity<Desktop>, index: usize) ->
                 .child(
                     div()
                         .id("inspect-model")
-                        .aria_label("模型选项")
+                        .aria_label(tr("模型选项"))
                         .size(px(21.))
                         .flex_none()
                         .flex()
@@ -438,13 +440,13 @@ impl Desktop {
                     short_effort(effort).to_owned()
                 }
             })
-            .unwrap_or_else(|| "推理".into());
+            .unwrap_or_else(|| tr("推理").into());
         let mut model_label = model
             .as_ref()
             .map(|model| model_label(&model.id))
-            .unwrap_or_else(|| "模型".into());
+            .unwrap_or_else(|| tr("模型").into());
         match self.shown_speed() {
-            "fast" => model_label.push_str(" · 快速"),
+            "fast" => model_label.push_str(tr(" · 快速")),
             "ultrafast" => model_label.push_str(" · Ultrafast"),
             _ => {}
         }
@@ -455,9 +457,9 @@ impl Desktop {
         let pending = self.model_controls.busy.contains(&self.key());
         let enabled = enabled && !pending;
         let model_tip = if pending {
-            "正在应用会话设置".to_owned()
+            tr("正在应用会话设置").to_owned()
         } else if session.is_some_and(|session| session.next_model.is_some()) {
-            "下一轮使用此模型".to_owned()
+            tr("下一轮使用此模型").to_owned()
         } else {
             model
                 .as_ref()
@@ -468,15 +470,22 @@ impl Desktop {
                         })
                         .map_or_else(
                             || model.id.clone(),
-                            |entry| format!("模型 · {}: {}", entry.provider_name, model.id),
+                            |entry| {
+                                crate::i18n::format_text!(
+                                    "模型 · {}: {}",
+                                    "Model · {}: {}",
+                                    entry.provider_name,
+                                    model.id
+                                )
+                            },
                         )
                 })
-                .unwrap_or_else(|| "选择模型".into())
+                .unwrap_or_else(|| tr("选择模型").into())
         };
         let effort_tip = if session.is_some_and(|session| session.next_effort.is_some()) {
-            "下一轮使用此推理强度"
+            tr("下一轮使用此推理强度")
         } else {
-            "设置推理强度"
+            tr("设置推理强度")
         };
         div()
             .flex()
@@ -587,7 +596,7 @@ impl Desktop {
         let Some(catalog) = self.menu_catalog() else {
             let label = match self.model_controls.catalogs.get(&self.model_profile()) {
                 Some(CatalogState::Failed(error)) => error.as_str(),
-                _ => "正在读取模型列表…",
+                _ => tr("正在读取模型列表…"),
             };
             return panel
                 .child(empty_menu(label))
@@ -638,16 +647,16 @@ impl Desktop {
             rows.push(row);
         }
         if !pinned.is_empty() {
-            pinned.insert(0, CatalogRow::Provider("收藏".into()));
+            pinned.insert(0, CatalogRow::Provider(tr("收藏").into()));
             pinned.append(&mut rows);
             rows = pinned;
         }
         let count = rows.len();
         if count == 0 {
             panel = panel.child(empty_menu(if tokens.is_empty() {
-                "暂无模型"
+                tr("暂无模型")
             } else {
-                "没有匹配的模型"
+                tr("没有匹配的模型")
             }));
         } else {
             let list_owner = desktop.clone();
@@ -712,7 +721,7 @@ impl Desktop {
     ) -> Div {
         let mut panel = menu_surface().w(px(174.)).flex_none().py_1();
         let Some(model) = target else {
-            return panel.child(empty_menu("暂无模型选项"));
+            return panel.child(empty_menu(tr("暂无模型选项")));
         };
         let is_active = self.shown_model().is_some_and(|current| {
             entry.map_or_else(|| current == *model, |catalog| catalog.matches(&current))
@@ -749,7 +758,7 @@ impl Desktop {
                     .is_some_and(|session| session.running || session.next_model.is_some()));
         let thinking_toggle = reasoning && entry.is_none_or(|entry| entry.can_disable_reasoning);
         if thinking_toggle || fast || ultrafast || matches!(speed, "fast" | "ultrafast") {
-            panel = panel.child(section_title("选项"));
+            panel = panel.child(section_title(tr("选项")));
             if thinking_toggle {
                 let enable_effort = if current_effort == "none" {
                     default_effort
@@ -759,7 +768,7 @@ impl Desktop {
                 .to_owned();
                 panel = panel.child(option_switch(
                     "menu-thinking",
-                    "思考",
+                    tr("思考"),
                     current_effort != "none",
                     !busy,
                     choice.clone(),
@@ -774,8 +783,8 @@ impl Desktop {
                 ));
             }
             for (key, label, supported) in [
-                ("fast", "Fast", fast),
-                ("ultrafast", "Ultrafast", ultrafast),
+                ("fast", tr("Fast"), fast),
+                ("ultrafast", tr("Ultrafast"), ultrafast),
             ] {
                 if supported || speed == key {
                     panel = panel.child(option_switch(
@@ -794,8 +803,9 @@ impl Desktop {
             }
         }
         if reasoning {
-            panel = panel.child(section_title("推理强度"));
+            panel = panel.child(section_title(tr("推理强度")));
             for &(key, _, label) in EFFORTS.iter().filter(|(key, _, _)| *key != "none") {
+                let label = tr(label);
                 let owner = desktop.clone();
                 let target = choice.clone();
                 let selected = current_effort == key;
@@ -822,7 +832,7 @@ impl Desktop {
             }
         }
         if !reasoning && !fast && !ultrafast && !matches!(speed, "fast" | "ultrafast") {
-            return panel.child(empty_menu("此模型没有可调选项"));
+            return panel.child(empty_menu(tr("此模型没有可调选项")));
         }
         panel
     }
@@ -842,7 +852,7 @@ impl Desktop {
                     div()
                         .text_size(px(13.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child("确认模型切换"),
+                        .child(tr("确认模型切换")),
                 )
                 .child(
                     div()
@@ -855,16 +865,18 @@ impl Desktop {
                         .flex()
                         .justify_end()
                         .gap_1()
-                        .child(control("model-cancel", "取消").on_click(cx.listener(
+                        .child(control("model-cancel", tr("取消")).on_click(cx.listener(
                             |this, _, _, cx| {
                                 this.resolve_model_prompt(false, cx);
                             },
                         )))
-                        .child(primary("model-confirm", "继续", true).on_click(cx.listener(
-                            |this, _, _, cx| {
-                                this.resolve_model_prompt(true, cx);
-                            },
-                        ))),
+                        .child(
+                            primary("model-confirm", tr("继续"), true).on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.resolve_model_prompt(true, cx);
+                                },
+                            )),
+                        ),
                 ),
         )
     }

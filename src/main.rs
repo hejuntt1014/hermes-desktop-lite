@@ -5,6 +5,7 @@ mod auth;
 mod background_notice;
 mod command_receipt;
 mod gateway;
+mod i18n;
 mod icons;
 mod local_gateway;
 mod media;
@@ -74,7 +75,19 @@ fn main() -> Result<()> {
     gpui_platform::application()
         .with_assets(icons::Icons)
         .run(move |cx| {
+            #[cfg(not(windows))]
+            cx.set_app_identity(
+                "io.github.hejuntt1014.hermes-desktop-lite",
+                "Hermes Desktop Lite",
+            );
+            let settings = settings::Settings::load();
             gpui_component::init(cx);
+            i18n::apply(
+                settings
+                    .as_ref()
+                    .map(|s| s.display.language)
+                    .unwrap_or_default(),
+            );
             if let Err(error) =
                 cx.text_system()
                     .add_fonts(vec![std::borrow::Cow::Borrowed(include_bytes!(
@@ -339,7 +352,6 @@ fn main() -> Result<()> {
                 }
             })
             .detach();
-            let settings = settings::Settings::load();
             let bounds = app::initial_window_bounds(
                 settings.as_ref().ok().and_then(|settings| settings.window),
                 cx,

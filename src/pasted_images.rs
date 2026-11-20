@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     fs,
     io::{self, Write},
@@ -85,7 +87,7 @@ impl Desktop {
             return;
         };
         if pictures.is_empty() {
-            self.banner = Some("剪贴板中没有图片".into());
+            self.banner = Some(tr("剪贴板中没有图片").into());
             cx.notify();
         } else {
             self.attach_clipboard_pictures(pictures, cx);
@@ -117,7 +119,7 @@ impl Desktop {
         let address = self.settings.workspace_key().to_owned();
         *self.clipboard_pastes.entry(tab.clone()).or_default() += 1;
         let job = self.runtime.spawn_blocking(move || {
-            let root = clipboard_dir().context("无法定位截图存储目录")?;
+            let root = clipboard_dir().context(tr("无法定位截图存储目录"))?;
             fs::create_dir_all(&root)?;
             pictures
                 .into_iter()
@@ -127,7 +129,7 @@ impl Desktop {
         cx.spawn(async move |view, cx| {
             let result = job
                 .await
-                .context("读取剪贴板图片失败")
+                .context(tr("读取剪贴板图片失败"))
                 .and_then(|result| result);
             let _ = view.update(cx, |this, cx| {
                 if let Some(count) = this.clipboard_pastes.get_mut(&tab) {
@@ -150,8 +152,13 @@ impl Desktop {
                             match file.persist_noclobber(&path) {
                                 Ok(_) => paths.push(path),
                                 Err(error) => {
-                                    this.banner =
-                                        Some(format!("无法保存粘贴的图片 · {error}").into())
+                                    this.banner = Some(
+                                        crate::i18n::format_text!(
+                                            "无法保存粘贴的图片 · {error}",
+                                            "Could not save pasted image · {error}"
+                                        )
+                                        .into(),
+                                    )
                                 }
                             }
                         }
@@ -160,7 +167,15 @@ impl Desktop {
                             this.add_files(key, paths, cx);
                         }
                     }
-                    Err(error) => this.banner = Some(format!("无法粘贴图片 · {error}").into()),
+                    Err(error) => {
+                        this.banner = Some(
+                            crate::i18n::format_text!(
+                                "无法粘贴图片 · {error}",
+                                "Could not paste image · {error}"
+                            )
+                            .into(),
+                        )
+                    }
                 }
             });
         })
@@ -229,9 +244,9 @@ fn stage_picture(root: &Path, picture: Picture) -> Result<(tempfile::NamedTempFi
     let (bytes, extension) = match picture {
         Picture::Encoded(bytes) => {
             if bytes.len() > MAX_BYTES {
-                bail!("图片大小超过 16 MB");
+                bail!(tr("图片大小超过 16 MB"));
             }
-            let format = image::guess_format(&bytes).context("无法识别剪贴板中的图片格式")?;
+            let format = image::guess_format(&bytes).context(tr("无法识别剪贴板中的图片格式"))?;
             decode_raster(&bytes, format)?;
             let extension = match format {
                 ImageFormat::Png => "png",
@@ -240,7 +255,7 @@ fn stage_picture(root: &Path, picture: Picture) -> Result<(tempfile::NamedTempFi
                 ImageFormat::WebP => "webp",
                 ImageFormat::Bmp => "bmp",
                 ImageFormat::Tiff => "tiff",
-                _ => bail!("图片格式暂不支持"),
+                _ => bail!(tr("图片格式暂不支持")),
             };
             (bytes, extension)
         }
@@ -256,7 +271,7 @@ fn stage_picture(root: &Path, picture: Picture) -> Result<(tempfile::NamedTempFi
         }
     };
     if bytes.len() > MAX_BYTES {
-        bail!("图片大小超过 16 MB");
+        bail!(tr("图片大小超过 16 MB"));
     }
     let mut file = tempfile::Builder::new()
         .prefix(".clipboard-")
@@ -264,7 +279,11 @@ fn stage_picture(root: &Path, picture: Picture) -> Result<(tempfile::NamedTempFi
     file.write_all(&bytes)?;
     file.as_file().sync_all()?;
     let uuid = uuid::Uuid::new_v4().simple().to_string();
-    let path = root.join(format!("截图-{}.{extension}", &uuid[..12]));
+    let path = root.join(crate::i18n::format_text!(
+        "截图-{}.{extension}",
+        "screenshot-{}.{extension}",
+        &uuid[..12]
+    ));
     Ok((file, path))
 }
 
@@ -285,7 +304,7 @@ fn read_dib() -> Result<Option<Vec<u8>>> {
         return Ok(None);
     };
     if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
-        bail!("剪贴板正忙，请再粘贴一次");
+        bail!(tr("剪贴板正忙，请再粘贴一次"));
     }
     struct OpenedClipboard;
     impl Drop for OpenedClipboard {
@@ -298,15 +317,15 @@ fn read_dib() -> Result<Option<Vec<u8>>> {
     let _clipboard = OpenedClipboard;
     let data = unsafe { GetClipboardData(format) };
     if data.is_null() {
-        bail!("无法读取剪贴板中的位图");
+        bail!(tr("无法读取剪贴板中的位图"));
     }
     let size = unsafe { GlobalSize(data) };
     if size == 0 || size > 64 * 1024 * 1024 {
-        bail!("剪贴板中的位图过大或已损坏");
+        bail!(tr("剪贴板中的位图过大或已损坏"));
     }
     let memory = unsafe { GlobalLock(data) };
     if memory.is_null() {
-        bail!("无法读取剪贴板中的位图");
+        bail!(tr("无法读取剪贴板中的位图"));
     }
     // The clipboard keeps this handle alive until it is unlocked and closed.
     let bytes = unsafe { std::slice::from_raw_parts(memory.cast::<u8>(), size).to_vec() };

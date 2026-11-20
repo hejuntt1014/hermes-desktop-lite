@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use crate::gateway::{Gateway, Update};
 use anyhow::{Context, Result, bail};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -123,7 +125,7 @@ impl Gateway {
             ("redirect_uri", &redirect),
         ]);
         tx.send(Update::SignIn(url.to_string()))
-            .context("登录窗口已关闭")?;
+            .context(tr("登录窗口已关闭"))?;
         timeout(Duration::from_secs(300), async {
             loop {
                 let (stream, _) = listener.accept().await?;
@@ -138,15 +140,15 @@ impl Gateway {
                     stream.write_all(b"HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await?;
                     continue;
                 }
-                let code = field("code").context("登录未获授权")?;
+                let code = field("code").context(tr("登录未获授权"))?;
                 let response = self.http.post(self.endpoint("auth/native/token"))
                     .json(&json!({"code":code,"code_verifier":verifier})).send().await?;
-                if !response.status().is_success() { bail!("网关拒绝了登录授权（{}）", response.status()); }
+                if !response.status().is_success() { bail!(crate::i18n::format_text!("网关拒绝了登录授权（{}）", "The gateway denied sign-in ({})", response.status())); }
                 let bearer = self.remember(response.json().await?).await?;
-                let message = "登录成功，可以返回 Hermes Lite。";
+                let message = tr("登录成功，可以返回 Hermes Lite。");
                 let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{message}", message.len()).as_bytes()).await;
                 return Ok(bearer);
             }
-        }).await.context("登录已超时，请重新连接")?
+        }).await.context(tr("登录已超时，请重新连接"))?
     }
 }

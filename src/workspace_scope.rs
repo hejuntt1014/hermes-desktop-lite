@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use anyhow::{Result, bail};
 use gpui::SharedString;
 use serde_json::Value;
@@ -55,7 +57,7 @@ impl WorkspaceScope {
             .await?;
         let path = string(&value, "cwd");
         if path.is_empty() {
-            bail!("网关没有提供工作区目录");
+            bail!(tr("网关没有提供工作区目录"));
         }
         Ok(path.to_owned())
     }

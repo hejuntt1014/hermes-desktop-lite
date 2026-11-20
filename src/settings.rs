@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -47,6 +49,7 @@ pub struct SavedWindow {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct DisplayPreferences {
+    pub language: crate::i18n::Language,
     pub message_size: u8,
     pub conversation_backdrop: bool,
     pub turn_rail: bool,
@@ -64,6 +67,7 @@ pub struct DisplayPreferences {
 impl Default for DisplayPreferences {
     fn default() -> Self {
         Self {
+            language: Default::default(),
             message_size: 13,
             conversation_backdrop: true,
             turn_rail: true,
@@ -208,6 +212,14 @@ pub struct ChatTab {
 }
 
 impl ChatTab {
+    pub fn display_title(&self) -> &str {
+        if self.session.is_none() {
+            tr("新会话")
+        } else {
+            &self.title
+        }
+    }
+
     pub fn draft() -> Self {
         Self {
             id: format!("draft:{}", uuid::Uuid::new_v4()),
@@ -444,14 +456,14 @@ impl Settings {
     }
     fn path() -> Result<PathBuf> {
         Ok(dirs::config_dir()
-            .context("无法定位应用配置目录")?
+            .context(tr("无法定位应用配置目录"))?
             .join("HermesDesktopLite")
             .join("settings.json"))
     }
 
     pub fn load() -> Result<Self> {
         match fs::read(Self::path()?) {
-            Ok(data) => Ok(serde_json::from_slice(&data).context("无法读取应用配置")?),
+            Ok(data) => Ok(serde_json::from_slice(&data).context(tr("无法读取应用配置"))?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(error.into()),
         }
@@ -459,7 +471,7 @@ impl Settings {
 
     pub fn save(&self) -> Result<()> {
         let path = Self::path()?;
-        fs::create_dir_all(path.parent().context("无法定位应用配置目录")?)?;
+        fs::create_dir_all(path.parent().context(tr("无法定位应用配置目录"))?)?;
         let temp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
         fs::write(&temp, serde_json::to_vec(self)?)?;
         if let Err(error) = fs::rename(&temp, path) {

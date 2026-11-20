@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, VecDeque},
     time::Duration,
@@ -17,6 +19,8 @@ use crate::{
 
 use super::{Call, Desktop, model_controls::Picker, rpc_error};
 
+const SKILL_GROUP: &str = "技能";
+
 const GROUPS: &[&str] = &[
     "会话",
     "配置",
@@ -24,7 +28,7 @@ const GROUPS: &[&str] = &[
     "信息",
     "自定义命令",
     "插件命令",
-    "技能",
+    SKILL_GROUP,
 ];
 const LOCAL_COMMANDS: &[(&str, &str, &str)] = &[
     ("new", "新开一个聊天标签", "会话"),
@@ -341,7 +345,7 @@ impl Desktop {
                 .filter_map(|item| {
                     let name = item["text"].as_str()?.trim_start_matches('/');
                     (item["kind"] == "skill" && valid_name(name))
-                        .then(|| Choice::new(name, string(item, "meta"), "技能", true))
+                        .then(|| Choice::new(name, string(item, "meta"), SKILL_GROUP, true))
                 })
                 .collect()
         };
@@ -437,7 +441,7 @@ impl Desktop {
                 .map(|&(name, hint, group)| Choice::new(name, hint, group, false));
             let server = catalog
                 .iter()
-                .filter(|row| !lookup.preserve_draft || row.group == "技能")
+                .filter(|row| !lookup.preserve_draft || row.group == SKILL_GROUP)
                 .filter(|row| row.skill || !lookup.scope.runtime.is_empty())
                 .cloned();
             let mut visible: Vec<Choice> = Vec::new();
@@ -446,7 +450,7 @@ impl Desktop {
                     row.browse
                 } else {
                     row.name.to_lowercase().contains(&needle)
-                        || row.hint.to_lowercase().contains(&needle)
+                        || tr(row.hint.as_ref()).to_lowercase().contains(&needle)
                 }
             }) {
                 if !visible
@@ -667,7 +671,7 @@ impl Desktop {
                     return true;
                 }
             } else {
-                self.banner = Some("未知的推理选项".into());
+                self.banner = Some(tr("未知的推理选项").into());
                 cx.notify();
                 return true;
             }
@@ -684,18 +688,18 @@ impl Desktop {
             return false;
         }
         if !arg.is_empty() && !matches!(command, "title" | "resume" | "save") {
-            self.banner = Some("此命令不需要参数".into());
+            self.banner = Some(tr("此命令不需要参数").into());
             cx.notify();
             return true;
         }
         let summary = self.slash_session_summary();
         if needs_session(command) && summary.is_none() {
-            self.banner = Some("请先打开一个会话".into());
+            self.banner = Some(tr("请先打开一个会话").into());
             cx.notify();
             return true;
         }
         if command == "save" && !matches!(arg.to_ascii_lowercase().as_str(), "" | "md" | "json") {
-            self.banner = Some("请输入 /save md 或 /save json".into());
+            self.banner = Some(tr("请输入 /save md 或 /save json").into());
             cx.notify();
             return true;
         }
@@ -756,7 +760,7 @@ impl Desktop {
                 }) {
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                 } else {
-                    self.banner = Some("暂无可复制的回复".into());
+                    self.banner = Some(tr("暂无可复制的回复").into());
                 }
             }
             "save" => self.export_session(
@@ -773,15 +777,16 @@ impl Desktop {
                     session.activity.processes_open = true;
                     session.activity.agents_open = true;
                     if !session.activity.has_work() {
-                        self.banner = Some("当前会话没有运行中的后台进程或子代理".into());
+                        self.banner = Some(tr("当前会话没有运行中的后台进程或子代理").into());
                     }
                 }
                 self.poll_work();
             }
             "version" => {
-                let text = format!(
+                let text = crate::i18n::format_text!(
                     "Hermes 网关 {}",
-                    self.gateway_version.as_deref().unwrap_or("版本未知")
+                    "Hermes gateway {}",
+                    self.gateway_version.as_deref().unwrap_or(tr("版本未知"))
                 );
                 self.store_slash_output(self.key(), "version".into(), text);
             }
@@ -819,12 +824,12 @@ impl Desktop {
     ) {
         let scope = self.command_scope();
         let Some(arg) = remote_argument(command, arg) else {
-            self.banner = Some("此命令只支持菜单中列出的选项".into());
+            self.banner = Some(tr("此命令只支持菜单中列出的选项").into());
             cx.notify();
             return;
         };
         if scope.runtime.is_empty() {
-            self.banner = Some("请等待会话恢复后再执行此命令".into());
+            self.banner = Some(tr("请等待会话恢复后再执行此命令").into());
             cx.notify();
             return;
         }
@@ -864,7 +869,7 @@ impl Desktop {
         let text = if let Some(error) = error {
             rpc_error(error)
         } else if response.is_null() {
-            "未收到网关返回的命令结果".into()
+            tr("未收到网关返回的命令结果").into()
         } else {
             [
                 string(response, "warning"),
@@ -881,7 +886,7 @@ impl Desktop {
 
     pub(super) fn store_slash_output(&mut self, key: String, command: String, text: String) {
         let text = if text.trim().is_empty() {
-            "命令已完成".into()
+            tr("命令已完成").into()
         } else {
             text
         };
@@ -903,7 +908,13 @@ impl Desktop {
                 .or_default()
                 .push(receipt);
             if let Err(error) = self.settings.save() {
-                self.banner = Some(format!("无法保存命令回执 · {error}").into());
+                self.banner = Some(
+                    crate::i18n::format_text!(
+                        "无法保存命令回执 · {error}",
+                        "Could not save command result · {error}"
+                    )
+                    .into(),
+                );
             }
             if self.selected.as_deref() == Some(key.as_str()) {
                 self.timeline_raw_count = None;
@@ -923,7 +934,7 @@ impl Desktop {
         if !scope.runtime.is_empty() {
             params["session_id"] = json!(scope.runtime);
         } else if self.selected.is_some() {
-            self.banner = Some("会话仍在恢复，请稍后再试".into());
+            self.banner = Some(tr("会话仍在恢复，请稍后再试").into());
             return false;
         }
         if !scope.profile.is_empty() {
@@ -1038,7 +1049,7 @@ impl Desktop {
             let command = prepared
                 .skill
                 .as_ref()
-                .map_or("命令", |skill| skill.name.as_str())
+                .map_or(tr("命令"), |skill| skill.name.as_str())
                 .to_owned();
             self.accept_draft(&key, window, cx);
             self.store_slash_output(key, command, string(response, "output").to_owned());
@@ -1067,7 +1078,7 @@ impl Desktop {
             }
         } else {
             session.error =
-                Some(error.map_or_else(|| "网关未返回可发送的技能请求".into(), rpc_error));
+                Some(error.map_or_else(|| tr("网关未返回可发送的技能请求").into(), rpc_error));
         }
         cx.notify();
     }
@@ -1079,7 +1090,7 @@ impl Desktop {
             .as_ref()
             .is_some_and(|query| query.arguments);
         let title = if arguments {
-            "选项"
+            tr("选项")
         } else if self
             .slash_menu
             .query
@@ -1087,13 +1098,13 @@ impl Desktop {
             .is_some_and(|query| query.preserve_draft)
         {
             match self.slash_menu.catalog_status {
-                _ if !self.slash_menu.rows.is_empty() => "选择技能",
-                CatalogStatus::Loading => "正在读取技能…",
-                CatalogStatus::Ready => "没有可选技能",
-                CatalogStatus::Unavailable => "无法读取技能",
+                _ if !self.slash_menu.rows.is_empty() => tr("选择技能"),
+                CatalogStatus::Loading => tr("正在读取技能…"),
+                CatalogStatus::Ready => tr("没有可选技能"),
+                CatalogStatus::Unavailable => tr("无法读取技能"),
             }
         } else {
-            "命令与技能"
+            tr("命令与技能")
         };
         let mut rows = Vec::new();
         let mut previous = "";
@@ -1109,7 +1120,7 @@ impl Desktop {
                         .text_size(px(10.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(rgb(MUTED))
-                        .child(item.group),
+                        .child(tr(item.group)),
                 );
             }
             rows.push(
@@ -1121,7 +1132,7 @@ impl Desktop {
                     } else {
                         format!("/{}", item.name).into()
                     },
-                    item.hint.clone(),
+                    tr(item.hint.as_ref()).to_owned().into(),
                     item.skill,
                 )
                 .on_hover(cx.listener(move |this, over: &bool, _, cx| {
@@ -1177,7 +1188,7 @@ impl Desktop {
                             super::view::icon_button(
                                 "dismiss-slash-output",
                                 crate::icons::TAB_CLOSE,
-                                "关闭命令结果",
+                                tr("关闭命令结果"),
                             )
                             .size(px(21.))
                             .on_click(cx.listener(
@@ -1319,7 +1330,12 @@ fn catalog_choices(response: &Value) -> Vec<Choice> {
             .get(wire)
             .or_else(|| response["skills"].get(name));
         if let Some(meta) = meta {
-            let mut row = Choice::new(name, pair[1].as_str().unwrap_or_default(), "技能", true);
+            let mut row = Choice::new(
+                name,
+                pair[1].as_str().unwrap_or_default(),
+                SKILL_GROUP,
+                true,
+            );
             let usage = meta["usage"].as_u64().unwrap_or(0);
             row.browse = usage > 0 || meta["origin"] != "bundled";
             skills.push((usage, row));
@@ -1359,10 +1375,10 @@ fn remote_choice(response: &Value, name: &str) -> Option<Choice> {
 
 fn reasoning_option_hint(name: &str) -> &'static str {
     match name {
-        "show" | "on" => "显示思考过程",
-        "hide" | "off" => "隐藏思考过程",
-        "full" => "默认展开",
-        "clamp" => "默认折叠",
+        "show" | "on" => tr("显示思考过程"),
+        "hide" | "off" => tr("隐藏思考过程"),
+        "full" => tr("默认展开"),
+        "clamp" => tr("默认折叠"),
         _ => "",
     }
 }

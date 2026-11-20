@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
@@ -225,6 +227,8 @@ pub struct Desktop {
     tab_scroll: ScrollHandle,
     dragged_tab: Option<(String, gpui::Pixels)>,
     workspace_focus: FocusHandle,
+    #[cfg(not(windows))]
+    alert_targets: std::collections::VecDeque<(SharedString, desktop_alerts::AlertTarget)>,
     notified_prompts: std::collections::HashSet<(String, String)>,
     pending_bookmark: Option<crate::settings::MessageBookmark>,
     pending_reading: Option<ReadingPosition>,
@@ -238,7 +242,7 @@ pub struct Desktop {
     tool_history: ToolHistory,
     view_revision: u64,
     expanded: HashSet<usize>,
-    status: SharedString,
+    status: &'static str,
     gateway_version: Option<String>,
     banner: Option<SharedString>,
 }
@@ -260,12 +264,15 @@ impl Desktop {
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .auto_grow(1, 8)
-                .placeholder("输入消息…")
+                .placeholder(tr("输入消息…"))
         });
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索会话"));
-        let palette_input = cx.new(|cx| InputState::new(window, cx).placeholder("搜索会话或操作…"));
-        let transcript_search = cx.new(|cx| InputState::new(window, cx).placeholder("会话内查找"));
-        let model_search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索模型或提供商"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索会话")));
+        let palette_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索会话或操作…")));
+        let transcript_search =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr("会话内查找")));
+        let model_search =
+            cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索模型或提供商")));
         let address = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("https://hermes.example.com")
@@ -274,10 +281,10 @@ impl Desktop {
         let token = cx.new(|cx| {
             InputState::new(window, cx)
                 .masked(true)
-                .placeholder("输入网关令牌")
+                .placeholder(tr("输入网关令牌"))
         });
         let gateway_panel = GatewayPanel::new(settings.gateway_mode, settings.suggested_auth());
-        let rename = cx.new(|cx| InputState::new(window, cx).placeholder("会话标题"));
+        let rename = cx.new(|cx| InputState::new(window, cx).placeholder(tr("会话标题")));
         let subscriptions = vec![
             cx.subscribe_in(&palette_input, window, |this, _, event, _, cx| {
                 if matches!(event, InputEvent::Change) {
@@ -398,6 +405,8 @@ impl Desktop {
             tab_scroll: ScrollHandle::new(),
             dragged_tab: None,
             workspace_focus,
+            #[cfg(not(windows))]
+            alert_targets: Default::default(),
             notified_prompts: Default::default(),
             pending_bookmark: None,
             pending_reading: None,
@@ -411,9 +420,11 @@ impl Desktop {
             tool_history: ToolHistory::default(),
             view_revision: 0,
             expanded: Default::default(),
-            status: "未连接".into(),
+            status: "未连接",
             gateway_version: None,
         };
+        #[cfg(not(windows))]
+        this.register_notification_handler(window, cx);
         let weak = cx.entity().downgrade();
         this.list.set_scroll_handler(move |_, _, app| {
             let weak = weak.clone();
@@ -532,7 +543,7 @@ impl Desktop {
         self.login_url = None;
         let mut connection = gateway.start(&self.runtime);
         self.gateway = Some(gateway);
-        self.status = "正在连接".into();
+        self.status = "正在连接";
         self.gateway_version = None;
         self.connection = Some(cx.spawn_in(window, async move |view, cx| {
             while let Some(update) = connection.inbox.recv().await {
@@ -582,7 +593,13 @@ impl Desktop {
 
     fn persist(&mut self, cx: &mut Context<Self>) {
         if let Err(error) = self.settings.save() {
-            self.banner = Some(format!("无法保存草稿及偏好 · {error}").into());
+            self.banner = Some(
+                crate::i18n::format_text!(
+                    "无法保存草稿及偏好 · {error}",
+                    "Could not save drafts and preferences · {error}"
+                )
+                .into(),
+            );
             cx.notify();
         } else {
             self.prune_clipboard_files();
@@ -615,6 +632,35 @@ impl Desktop {
         }));
     }
 
+    fn apply_language(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        crate::i18n::apply(self.settings.display.language);
+        let placeholder = self.composer_placeholder();
+        self.composer.update(cx, |field, cx| {
+            field.set_placeholder(placeholder, window, cx);
+        });
+        for (input, placeholder) in [
+            (&self.search, tr("搜索会话")),
+            (&self.palette.input, tr("搜索会话或操作…")),
+            (&self.transcript_find.input, tr("会话内查找")),
+            (&self.model_controls.search, tr("搜索模型或提供商")),
+            (&self.rename, tr("会话标题")),
+            (&self.token, tr("输入网关令牌")),
+        ] {
+            input.update(cx, |field, cx| {
+                field.set_placeholder(placeholder, window, cx)
+            });
+        }
+        self.remeasure_transcript();
+    }
+
+    fn composer_placeholder(&self) -> &'static str {
+        if self.selected.is_none() {
+            tr("给 Hermes 一个任务")
+        } else {
+            tr("输入消息…")
+        }
+    }
+
     fn restore_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.composer_expanded = false;
         let value = self
@@ -623,11 +669,7 @@ impl Desktop {
             .cloned()
             .unwrap_or_default();
         self.slash_changed(&value, cx);
-        let placeholder = if self.selected.is_none() {
-            "给 Hermes 一个任务"
-        } else {
-            "输入消息…"
-        };
+        let placeholder = self.composer_placeholder();
         self.composer.update(cx, |field, cx| {
             field.set_placeholder(placeholder, window, cx);
             field.set_value(value, window, cx);
@@ -1181,7 +1223,7 @@ impl Desktop {
         match update {
             Update::SignIn(url) => {
                 self.login_url = Some(url);
-                self.status = "等待登录".into();
+                self.status = "等待登录";
             }
             Update::Online {
                 out,
@@ -1198,7 +1240,7 @@ impl Desktop {
                 self.canonical = canonical;
                 self.clarify_batch = clarify_batch;
                 self.process_epoch = epoch;
-                self.status = "已连接".into();
+                self.status = "已连接";
                 self.reveal_selected_tab();
                 self.load_profiles(window, cx);
                 self.fetch_list(0, false, window, cx);
@@ -1236,11 +1278,7 @@ impl Desktop {
                 self.login_url = None;
                 self.gateway_version = None;
                 self.model_controls.picker = None;
-                self.status = if retry {
-                    "正在重连".into()
-                } else {
-                    "未连接".into()
-                };
+                self.status = if retry { "正在重连" } else { "未连接" };
                 self.out = None;
                 self.work_monitor = activity::WorkMonitor::default();
                 self.unread_sessions.clear();
@@ -1326,10 +1364,10 @@ impl Desktop {
     fn lost(&mut self, call: Call, timeout: bool) {
         match call {
             Call::Create { .. } => {
-                self.banner = Some("未收到新会话确认，草稿已保留".into());
+                self.banner = Some(tr("未收到新会话确认，草稿已保留").into());
             }
             Call::Branch { .. } => {
-                self.banner = Some("未收到分叉确认，可以通过原会话菜单重试".into());
+                self.banner = Some(tr("未收到分叉确认，可以通过原会话菜单重试").into());
             }
             Call::Rewrite(key, id) => self.lost_rewrite(&key, &id),
             Call::SlashSuggestions(lookup) => self.slash_lookup_failed(&lookup),
@@ -1337,15 +1375,15 @@ impl Desktop {
                 self.slash_result(scope, command, &Value::Null, None)
             }
             Call::SkillDispatch(key, _) => {
-                self.attachment_failed(&key, "未收到技能请求确认".into());
+                self.attachment_failed(&key, tr("未收到技能请求确认").into());
             }
             Call::ModelChange(key) => {
                 self.model_controls.busy.remove(&key);
                 self.cancel_model_preset(&key);
-                self.banner = Some("未收到模型设置确认，可以重试".into());
+                self.banner = Some(tr("未收到模型设置确认，可以重试").into());
             }
             Call::ReasoningDisplay(_) => {
-                self.banner = Some("未收到思考显示设置的确认".into());
+                self.banner = Some(tr("未收到思考显示设置的确认").into());
             }
             Call::WorkStatus(request) => self.finish_work(request, &Value::Null, None),
             Call::WorkRoster(profile) => self.finish_work_roster(&profile, &Value::Null, None),
@@ -1353,13 +1391,13 @@ impl Desktop {
             Call::ApprovalMode(profile, write) => self.lose_approval_mode(&profile, write),
             Call::GatewayInference => self.finish_gateway_inference(None),
             Call::AttachFile(key, _) => {
-                self.attachment_failed(&key, "未收到附件上传确认".into());
+                self.attachment_failed(&key, tr("未收到附件上传确认").into());
             }
             Call::Submit(key, _) => {
                 if let Some(session) = self.sessions.get_mut(&key) {
                     session.submitting = false;
                     session.uncertain = true;
-                    session.error = Some("未收到发送确认".into());
+                    session.error = Some(tr("未收到发送确认").into());
                 }
                 if timeout {
                     self.attach(&key, true);
@@ -1371,15 +1409,15 @@ impl Desktop {
                 if let Some(session) = self.sessions.get_mut(&key) {
                     session.loading = false;
                     if timeout {
-                        session.error = Some("读取会话超时".into());
+                        session.error = Some(tr("读取会话超时").into());
                     }
                 }
             }
             Call::Stop(_) | Call::Answer(_, _) | Call::Resolve(_, _) if timeout => {
-                self.banner = Some("未收到网关确认".into())
+                self.banner = Some(tr("未收到网关确认").into())
             }
             Call::CancelQueued(key, _) if timeout => {
-                self.banner = Some("未收到撤回确认".into());
+                self.banner = Some(tr("未收到撤回确认").into());
                 self.attach(&key, true);
             }
             Call::ReplaceQueued(key, id, submission) => {
@@ -1761,7 +1799,7 @@ impl Desktop {
         if error.is_some() || string(response, "session_id").is_empty() {
             session.loading = false;
             session.attached = false;
-            session.error = Some(error.map_or_else(|| "无法读取会话".into(), rpc_error));
+            session.error = Some(error.map_or_else(|| tr("无法读取会话").into(), rpc_error));
             return;
         }
         let keep = self.canonical
@@ -2015,7 +2053,7 @@ impl Desktop {
                 prior
             }
             Some(_) => {
-                self.banner = Some("上一条发送尚未确认，请先处理待确认消息".into());
+                self.banner = Some(tr("上一条发送尚未确认，请先处理待确认消息").into());
                 cx.notify();
                 return;
             }
@@ -2052,7 +2090,7 @@ impl Desktop {
         if error.is_some() || runtime.is_empty() {
             self.banner = Some(
                 error
-                    .map_or_else(|| "未能创建会话".into(), rpc_error)
+                    .map_or_else(|| tr("未能创建会话").into(), rpc_error)
                     .into(),
             );
             return;
@@ -2098,7 +2136,7 @@ impl Desktop {
             .lines()
             .find(|line| !line.trim().is_empty())
             .or_else(|| prepared.files.first()?.file_name()?.to_str())
-            .unwrap_or("新会话")
+            .unwrap_or(tr("新会话"))
             .chars()
             .take(45)
             .collect();
@@ -2148,7 +2186,13 @@ impl Desktop {
                 if let Some(record) = self.workspace_mut().pending_submissions.get_mut(&key) {
                     record.staging = true;
                 }
-                self.attachment_failed(&key, format!("无法保存待发送消息 · {error}"));
+                self.attachment_failed(
+                    &key,
+                    crate::i18n::format_text!(
+                        "无法保存待发送消息 · {error}",
+                        "Could not save the pending message · {error}"
+                    ),
+                );
                 cx.notify();
                 return;
             }
@@ -2250,7 +2294,7 @@ impl Desktop {
                 && response["admission_id"].is_string());
         if (status.is_empty() || !canonical_receipt) && response["voice_stopped"] != true {
             session.uncertain = true;
-            session.error = Some("网关未返回发送确认".into());
+            session.error = Some(tr("网关未返回发送确认").into());
             self.attach(key, true);
             return;
         }
@@ -2529,7 +2573,7 @@ impl Desktop {
 fn rpc_error(error: &Value) -> String {
     let message = string(error, "message");
     if message.is_empty() {
-        "网关请求失败".to_owned()
+        tr("网关请求失败").to_owned()
     } else {
         message.to_owned()
     }

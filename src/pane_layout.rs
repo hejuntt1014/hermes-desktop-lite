@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     App, Bounds, Context, Div, MouseButton, MouseDownEvent, MouseMoveEvent, Stateful, Window,
     WindowBounds, div, point, prelude::*, px, rgb, size,
@@ -131,8 +133,8 @@ impl Desktop {
     pub(super) fn pane_divider(&self, pane: Pane, cx: &mut Context<Self>) -> Stateful<Div> {
         let dragging = self.pane_resize.is_some_and(|active| active.pane == pane);
         let (id, title) = match pane {
-            Pane::Sessions => ("session-divider", "调整会话侧栏宽度，双击恢复默认"),
-            Pane::Files => ("file-divider", "调整文件列表宽度，双击恢复默认"),
+            Pane::Sessions => ("session-divider", tr("调整会话侧栏宽度，双击恢复默认")),
+            Pane::Files => ("file-divider", tr("调整文件列表宽度，双击恢复默认")),
         };
         div()
             .id(id)

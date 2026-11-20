@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{Anchor, ClipboardItem, Context, Div, SharedString, div, prelude::*, px, rgb};
 use gpui_component::{
     button::{Button, ButtonVariants},
@@ -55,7 +57,7 @@ impl Desktop {
                                     .text_color(rgb(SECONDARY))
                                     .child(process.title.clone()),
                             )
-                            .child(work_status("运行中", 0x4d719f))
+                            .child(work_status(tr("运行中"), 0x4d719f))
                             .child(svg_symbol(
                                 if open {
                                     icons::CHEVRON_DOWN
@@ -89,7 +91,7 @@ impl Desktop {
                                 .line_height(px(15.))
                                 .text_color(rgb(MUTED))
                                 .child(if process.output.is_empty() {
-                                    "暂无输出".into()
+                                    tr("暂无输出").into()
                                 } else {
                                     process.output.clone()
                                 })
@@ -143,9 +145,9 @@ impl Desktop {
                             }))
                             .child(work_status(
                                 if agent.queued {
-                                    "排队中"
+                                    tr("排队中")
                                 } else {
-                                    "运行中"
+                                    tr("运行中")
                                 },
                                 0x78629f,
                             ))
@@ -172,8 +174,8 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let (name, icon, tone, id) = match kind {
-            WorkKind::Processes => ("后台进程", icons::TERMINAL, 0x4d719f, "processes"),
-            WorkKind::Agents => ("子代理", icons::ROBOT, 0x78629f, "agents"),
+            WorkKind::Processes => (tr("后台进程"), icons::TERMINAL, 0x4d719f, "processes"),
+            WorkKind::Agents => (tr("子代理"), icons::ROBOT, 0x78629f, "agents"),
         };
         let key = session_key.to_owned();
         div()
@@ -291,7 +293,11 @@ impl Desktop {
                     .child(svg_symbol(icons::LIST_DETAILS, 13., MUTED))
                     .child(format!(
                         "{} {done}/{total}",
-                        if live { "任务" } else { "以往任务" }
+                        if live {
+                            tr("任务")
+                        } else {
+                            tr("以往任务")
+                        }
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if this.selected.as_deref() == Some(&session_key)
@@ -361,9 +367,9 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Div {
         let label = match (collapsed, queued) {
-            (true, true) => "展开会话状态（有排队消息）",
-            (true, false) => "展开会话状态",
-            (false, _) => "收起会话状态",
+            (true, true) => tr("展开会话状态（有排队消息）"),
+            (true, false) => tr("展开会话状态"),
+            (false, _) => tr("收起会话状态"),
         };
         div()
             .absolute()
@@ -423,9 +429,12 @@ impl Desktop {
         let has_branch = !branch.is_empty();
         let has_path = !cwd.is_empty();
         let branch_tip = if has_branch {
-            format!("审查工作区变更 · {branch}")
+            crate::i18n::format_text!(
+                "审查工作区变更 · {branch}",
+                "Review workspace changes · {branch}"
+            )
         } else {
-            "浏览工作区文件".to_owned()
+            tr("浏览工作区文件").to_owned()
         };
         let path_tip = cwd.clone();
         let copy_path = cwd.clone();
@@ -491,7 +500,7 @@ impl Desktop {
                         .child(cwd),
                 )
                 .child(
-                    icon_button("copy-composer-workspace", icons::COPY, "复制工作区路径")
+                    icon_button("copy-composer-workspace", icons::COPY, tr("复制工作区路径"))
                         .size(px(19.))
                         .opacity(0.64)
                         .group_hover("composer-workspace", |style| style.opacity(1.))
@@ -507,27 +516,27 @@ impl Desktop {
                     .compact()
                     .size(px(21.))
                     .p_0()
-                    .tooltip("工作区操作")
+                    .tooltip(tr("工作区操作"))
                     .child(svg_symbol(icons::DOTS_VERTICAL, 14., 0x979da5))
                     .dropdown_menu_with_anchor(Anchor::BottomRight, move |menu, _, _| {
                         let path = menu_path.clone();
                         menu.item(menu_item(
                             &desktop,
-                            "审查工作区变更",
+                            tr("审查工作区变更"),
                             icons::BRANCH,
                             has_branch,
                             |this, window, cx| this.open_review(window, cx),
                         ))
                         .item(menu_item(
                             &desktop,
-                            "浏览工作区文件",
+                            tr("浏览工作区文件"),
                             icons::FOLDER_OPEN,
                             true,
                             |this, window, cx| this.open_files(window, cx),
                         ))
                         .item(menu_item(
                             &desktop,
-                            "复制工作区路径",
+                            tr("复制工作区路径"),
                             icons::COPY,
                             has_path,
                             move |_, _, cx| {

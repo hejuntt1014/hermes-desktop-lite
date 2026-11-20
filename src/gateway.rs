@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use crate::{auth::Tokens, local_gateway::LocalTickets, settings::RemoteAuth};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -32,11 +34,19 @@ impl fmt::Display for HttpFailure {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.reason.as_deref() {
             Some("revision_conflict" | "stale_generation") => {
-                write!(output, "会话状态已变化，请重试")
+                write!(output, "{}", tr("会话状态已变化，请重试"))
             }
-            Some("session_busy") => write!(output, "会话正在运行，请稍后重试"),
-            Some("not_found") => write!(output, "找不到这段会话"),
-            _ => write!(output, "网关请求失败（HTTP {}）", self.status),
+            Some("session_busy") => write!(output, "{}", tr("会话正在运行，请稍后重试")),
+            Some("not_found") => write!(output, "{}", tr("找不到这段会话")),
+            _ => write!(
+                output,
+                "{}",
+                crate::i18n::format_text!(
+                    "网关请求失败（HTTP {}）",
+                    "Gateway request failed (HTTP {})",
+                    self.status
+                )
+            ),
         }
     }
 }
@@ -111,7 +121,7 @@ impl Gateway {
         } else {
             format!("http://{address}")
         };
-        let mut url = Url::parse(&address).context("网关地址无效")?;
+        let mut url = Url::parse(&address).context(tr("网关地址无效"))?;
         if !matches!(url.scheme(), "http" | "https")
             || url.host().is_none()
             || !url.username().is_empty()
@@ -119,7 +129,7 @@ impl Gateway {
             || url.query().is_some()
             || url.fragment().is_some()
         {
-            bail!("请输入 HTTP 或 HTTPS 网关地址");
+            bail!(tr("请输入 HTTP 或 HTTPS 网关地址"));
         }
         let path = url.path().trim_end_matches('/').to_owned();
         url.set_path(&path);
@@ -213,7 +223,7 @@ impl Gateway {
                 local.mint("native-http", profile).await?,
             ))
         } else if self.auth == RemoteAuth::Password {
-            Ok(request.bearer_auth(self.bearer().await?.context("请重新登录网关")?))
+            Ok(request.bearer_auth(self.bearer().await?.context(tr("请重新登录网关"))?))
         } else if !self.token.is_empty() {
             Ok(request.header("X-Hermes-Session-Token", &self.token))
         } else {
@@ -248,12 +258,16 @@ impl Gateway {
             .await
             .map_err(|error| error.without_url())?;
         if response.status() != StatusCode::OK {
-            bail!("下载失败（HTTP {}）", response.status().as_u16());
+            bail!(crate::i18n::format_text!(
+                "下载失败（HTTP {}）",
+                "Download failed (HTTP {})",
+                response.status().as_u16()
+            ));
         }
         let total = response.content_length();
         let directory = destination
             .parent()
-            .context("没有可用的保存目录")?
+            .context(tr("没有可用的保存目录"))?
             .to_owned();
         let (temporary, file) = tokio::task::spawn_blocking(move || {
             let temporary = tempfile::Builder::new()
@@ -274,7 +288,7 @@ impl Gateway {
             received += chunk.len() as u64;
         }
         if total.is_some_and(|size| received != size) {
-            bail!("下载不完整，请重试");
+            bail!(tr("下载不完整，请重试"));
         }
         file.flush().await?;
         file.sync_all().await?;
@@ -283,7 +297,7 @@ impl Gateway {
             temporary
                 .persist(destination)
                 .map(drop)
-                .context("无法保存下载文件")
+                .context(tr("无法保存下载文件"))
         })
         .await?
     }
@@ -306,11 +320,15 @@ impl Gateway {
             .api_request(reqwest::Method::GET, "api/fs/download", &query, None)
             .await?;
         if response.status() != StatusCode::OK {
-            bail!("无法读取文件（HTTP {}）", response.status().as_u16());
+            bail!(crate::i18n::format_text!(
+                "无法读取文件（HTTP {}）",
+                "Could not read file (HTTP {})",
+                response.status().as_u16()
+            ));
         }
         let declared = response.content_length();
         if declared.is_some_and(|size| size > limit as u64) {
-            bail!("此文件超过预览大小限制，请下载查看");
+            bail!(tr("此文件超过预览大小限制，请下载查看"));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response
@@ -319,12 +337,12 @@ impl Gateway {
             .map_err(|error| error.without_url())?
         {
             if chunk.len() > limit - bytes.len() {
-                bail!("此文件超过预览大小限制，请下载查看");
+                bail!(tr("此文件超过预览大小限制，请下载查看"));
             }
             bytes.extend_from_slice(&chunk);
         }
         if declared.is_some_and(|size| size != bytes.len() as u64) {
-            bail!("文件未完整读取，请重试");
+            bail!(tr("文件未完整读取，请重试"));
         }
         Ok(bytes)
     }
@@ -389,13 +407,17 @@ impl Gateway {
             .api_request(reqwest::Method::GET, "api/fs/read-data-url", &query, None)
             .await?;
         if !response.status().is_success() {
-            bail!("读取图片失败（HTTP {}）", response.status().as_u16());
+            bail!(crate::i18n::format_text!(
+                "读取图片失败（HTTP {}）",
+                "Could not read image (HTTP {})",
+                response.status().as_u16()
+            ));
         }
         if response
             .content_length()
             .is_some_and(|length| length > IMAGE_RESPONSE_LIMIT as u64)
         {
-            bail!("图片大小超过 16 MB");
+            bail!(tr("图片大小超过 16 MB"));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response
@@ -404,7 +426,7 @@ impl Gateway {
             .map_err(|error| error.without_url())?
         {
             if bytes.len() + chunk.len() > IMAGE_RESPONSE_LIMIT {
-                bail!("图片大小超过 16 MB");
+                bail!(tr("图片大小超过 16 MB"));
             }
             bytes.extend_from_slice(&chunk);
         }
@@ -413,7 +435,7 @@ impl Gateway {
             #[serde(rename = "dataUrl")]
             data_url: String,
         }
-        let payload: Payload = serde_json::from_slice(&bytes).context("无效的图片响应")?;
+        let payload: Payload = serde_json::from_slice(&bytes).context(tr("无效的图片响应"))?;
         Ok(payload.data_url.into())
     }
 
@@ -486,14 +508,14 @@ impl Gateway {
             Err(error) => return Err(error),
         };
         if snapshot["session_id"] != id || snapshot["exists"] != true {
-            bail!("找不到要修改的会话");
+            bail!(tr("找不到要修改的会话"));
         }
         let revision = snapshot["runtime_revision"]
             .as_u64()
-            .context("无法读取会话版本")?;
+            .context(tr("无法读取会话版本"))?;
         let generation = snapshot["runtime_generation"]
             .as_u64()
-            .context("无法读取会话执行版本")?;
+            .context(tr("无法读取会话执行版本"))?;
         Ok(Some((revision, generation)))
     }
 
@@ -518,28 +540,28 @@ impl Gateway {
             let mut page = self.api(reqwest::Method::GET, &path, &query, None).await?;
             if let Some(resolved) = page["session_id"].as_str() {
                 if target.as_deref().is_some_and(|known| known != resolved) {
-                    bail!("导出期间会话发生变化，请重试");
+                    bail!(tr("导出期间会话发生变化，请重试"));
                 }
                 target.get_or_insert_with(|| resolved.to_owned());
             }
             let Value::Array(mut records) = page["messages"].take() else {
-                bail!("网关返回了无法读取的会话记录");
+                bail!(tr("网关返回了无法读取的会话记录"));
             };
             if let Some(id) = records
                 .first()
                 .and_then(|row| row["id"].as_u64().or_else(|| row["row_id"].as_u64()))
                 && !page_starts.insert(id)
             {
-                bail!("网关重复返回同一页历史，请重新导出");
+                bail!(tr("网关重复返回同一页历史，请重新导出"));
             }
             if let Some(actual) = page["pagination"]["offset"].as_u64()
                 && actual != offset as u64
             {
-                bail!("网关返回的历史分页位置不一致");
+                bail!(tr("网关返回的历史分页位置不一致"));
             }
             bytes += serde_json::to_vec(&records)?.len();
             if bytes > MAX_TRANSCRIPT_BYTES {
-                bail!("会话记录超过 32 MB，可使用网关管理界面导出");
+                bail!(tr("会话记录超过 32 MB，可使用网关管理界面导出"));
             }
             let page_size = page["pagination"]["limit"]
                 .as_u64()
@@ -579,15 +601,15 @@ impl Gateway {
             && !profile.is_empty()
             && owner != profile
         {
-            bail!("网关返回的历史所属 Profile 不一致");
+            bail!(tr("网关返回的历史所属 Profile 不一致"));
         }
         if let Some(actual) = page["pagination"]["offset"].as_u64()
             && actual != offset as u64
         {
-            bail!("网关返回的历史分页位置不一致");
+            bail!(tr("网关返回的历史分页位置不一致"));
         }
         let Value::Array(rows) = page["messages"].take() else {
-            bail!("网关返回了无法读取的会话记录");
+            bail!(tr("网关返回了无法读取的会话记录"));
         };
         let limit = page["pagination"]["limit"]
             .as_u64()
@@ -629,12 +651,12 @@ impl Gateway {
                     .as_deref()
                     .is_some_and(|previous| previous != session)
                 {
-                    bail!("会话已更新，请重新读取工具结果");
+                    bail!(tr("会话已更新，请重新读取工具结果"));
                 }
                 observed.get_or_insert_with(|| session.to_owned());
             }
             let Some(messages) = page["messages"].as_array() else {
-                bail!("网关返回了无法读取的会话记录");
+                bail!(tr("网关返回了无法读取的会话记录"));
             };
             if let Some(record) = messages
                 .iter()
@@ -650,7 +672,7 @@ impl Gateway {
                 return Ok(None);
             }
         }
-        bail!("工具记录超出可读取的历史范围")
+        bail!(tr("工具记录超出可读取的历史范围"))
     }
 
     pub async fn search_sessions(
@@ -702,7 +724,7 @@ impl Gateway {
         };
         check_session_storage(&response)?;
         let Value::Array(results) = response["results"].take() else {
-            bail!("网关返回了无法读取的会话搜索结果");
+            bail!(tr("网关返回了无法读取的会话搜索结果"));
         };
         Ok(results)
     }
@@ -739,7 +761,7 @@ impl Gateway {
         let next = (response["total"].as_u64().unwrap_or(0) > next as u64).then_some(next);
         check_session_storage(&response)?;
         let Value::Array(mut rows) = response["sessions"].take() else {
-            bail!("网关返回了无法读取的会话列表");
+            bail!(tr("网关返回了无法读取的会话列表"));
         };
         rows.retain(|row| (row["archived"] == true) == archived);
         Ok(SessionPage { rows, next })
@@ -761,7 +783,7 @@ impl Gateway {
         check_session_storage(&response)?;
         let rows = response["sessions"]
             .as_array()
-            .context("网关返回了无法读取的会话列表")?;
+            .context(tr("网关返回了无法读取的会话列表"))?;
         Ok(rows
             .iter()
             .filter_map(|row| {
@@ -796,7 +818,7 @@ impl Gateway {
             let result = self.socket(&tx, &mut failures).await;
             let (reason, denied) = match result {
                 Ok(false) => return,
-                Ok(true) => ("连接已断开".to_owned(), false),
+                Ok(true) => (tr("连接已断开").to_owned(), false),
                 Err(error) => {
                     let denied = error.is::<ConnectionRefused>();
                     (error.to_string(), denied)
@@ -851,14 +873,16 @@ impl Gateway {
             match self.auth {
                 RemoteAuth::Password => {
                     if status["auth_required"] == false {
-                        return Err(ConnectionRefused("该网关使用访问令牌，请切换认证方式").into());
+                        return Err(
+                            ConnectionRefused(tr("该网关使用访问令牌，请切换认证方式")).into()
+                        );
                     }
                     let ticket = self.password_socket_ticket(sign_in).await?;
                     ws.query_pairs_mut().append_pair("ticket", &ticket);
                 }
                 RemoteAuth::Token => {
                     if self.token.is_empty() {
-                        return Err(ConnectionRefused("请输入此网关的访问令牌").into());
+                        return Err(ConnectionRefused(tr("请输入此网关的访问令牌")).into());
                     }
                     ws.query_pairs_mut().append_pair("token", &self.token);
                 }
@@ -868,16 +892,16 @@ impl Gateway {
         let mut request = ws
             .as_str()
             .into_client_request()
-            .context("网关连接地址无效")?;
+            .context(tr("网关连接地址无效"))?;
         if let Some(protocols) = protocols {
             request.headers_mut().insert(
                 "Sec-WebSocket-Protocol",
-                protocols.parse().context("本地网关票据无效")?,
+                protocols.parse().context(tr("本地网关票据无效"))?,
             );
         }
         let (mut socket, _) = time::timeout(TIMEOUT, connect_async(request))
             .await
-            .context("连接网关超时")?
+            .context(tr("连接网关超时"))?
             .map_err(websocket_failure)?;
 
         let ready = time::timeout(TIMEOUT, async {
@@ -894,17 +918,17 @@ impl Gateway {
                             matches!(u16::from(close.code), 1008 | 4401 | 4403)
                         }) =>
                     {
-                        return Err(ConnectionRefused("网关拒绝了此认证").into());
+                        return Err(ConnectionRefused(tr("网关拒绝了此认证")).into());
                     }
                     Message::Close(_) => break,
                     Message::Ping(_) => socket.flush().await.map_err(websocket_failure)?,
                     _ => {}
                 }
             }
-            bail!("网关在就绪前断开")
+            bail!(tr("网关在就绪前断开"))
         })
         .await
-        .context("等待网关就绪超时")??;
+        .context(tr("等待网关就绪超时"))??;
 
         let version = status["version"]
             .as_str()
@@ -920,14 +944,16 @@ impl Gateway {
         let bearer = match (self.bearer().await?, sign_in) {
             (Some(bearer), _) => bearer,
             (None, Some(tx)) => self.login(tx).await?,
-            (None, None) => return Err(ConnectionRefused("请先在浏览器完成网关登录").into()),
+            (None, None) => return Err(ConnectionRefused(tr("请先在浏览器完成网关登录")).into()),
         };
         let mut response = self.request_ws_ticket(&bearer).await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             let next = match (self.refresh_bearer(Some(&bearer)).await?, sign_in) {
                 (Some(bearer), _) => bearer,
                 (None, Some(tx)) => self.login(tx).await?,
-                (None, None) => return Err(ConnectionRefused("远程登录已过期，请重新登录").into()),
+                (None, None) => {
+                    return Err(ConnectionRefused(tr("远程登录已过期，请重新登录")).into());
+                }
             };
             response = self.request_ws_ticket(&next).await?;
         }
@@ -935,7 +961,7 @@ impl Gateway {
             response.status(),
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
         ) {
-            return Err(ConnectionRefused("网关拒绝了登录凭据，请重新登录").into());
+            return Err(ConnectionRefused(tr("网关拒绝了登录凭据，请重新登录")).into());
         }
         let reply: Value = response
             .error_for_status()
@@ -947,7 +973,7 @@ impl Gateway {
             .as_str()
             .filter(|ticket| !ticket.is_empty())
             .map(str::to_owned)
-            .context("网关未返回连接票据")
+            .context(tr("网关未返回连接票据"))
     }
 
     async fn request_ws_ticket(&self, bearer: &str) -> Result<reqwest::Response> {
@@ -1001,7 +1027,7 @@ impl Gateway {
                     _ => {}
                 }
             }
-            bail!("网关在协商客户端能力时断开")
+            bail!(tr("网关在协商客户端能力时断开"))
         })
         .await
         .unwrap_or(Ok(false))?;
@@ -1065,7 +1091,7 @@ impl Gateway {
                 }
                 _ = interval.tick() => {
                     if last_frame.elapsed() >= TIMEOUT * 3 {
-                        bail!("网关连接超时");
+                        bail!(tr("网关连接超时"));
                     }
                     if heartbeat {
                         let ping = json!({"jsonrpc":"2.0","id":"lite-heartbeat","method":"gateway.ping","params":{}});
@@ -1129,7 +1155,7 @@ fn check_session_storage(response: &Value) -> Result<()> {
         .as_object()
         .is_some_and(|profiles| profiles.values().any(|value| value == "corrupt"))
     {
-        bail!("网关报告会话存储已损坏");
+        bail!(tr("网关报告会话存储已损坏"));
     }
     Ok(())
 }
@@ -1137,9 +1163,13 @@ fn check_session_storage(response: &Value) -> Result<()> {
 fn websocket_failure(error: WebSocketError) -> anyhow::Error {
     if let WebSocketError::Http(reply) = &error {
         if matches!(reply.status().as_u16(), 401 | 403) {
-            return ConnectionRefused("网关拒绝了此认证，请检查访问令牌或登录状态").into();
+            return ConnectionRefused(tr("网关拒绝了此认证，请检查访问令牌或登录状态")).into();
         }
-        return anyhow::anyhow!("网关拒绝连接（HTTP {}）", reply.status().as_u16());
+        return anyhow::anyhow!(crate::i18n::format_text!(
+            "网关拒绝连接（HTTP {}）",
+            "The gateway refused the connection (HTTP {})",
+            reply.status().as_u16()
+        ));
     }
-    anyhow::anyhow!("无法连接网关 WebSocket")
+    anyhow::anyhow!(tr("无法连接网关 WebSocket"))
 }

@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     borrow::Cow,
     hash::{DefaultHasher, Hash, Hasher},
@@ -136,7 +138,7 @@ pub(super) fn code_fence_style(height: gpui::Pixels) -> StyleRefinement {
 }
 
 pub(super) fn copy_fence(text: SharedString) -> gpui::Stateful<gpui::Div> {
-    icon_button("copy-code", icons::COPY, "复制代码")
+    icon_button("copy-code", icons::COPY, tr("复制代码"))
         .block_mouse_except_scroll()
         .size(px(20.))
         .on_click(move |_, _, cx| {
@@ -183,9 +185,9 @@ fn expandable_fence(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> A
                 .cursor_pointer()
                 .block_mouse_except_scroll()
                 .aria_label(if expanded {
-                    "收起代码块"
+                    tr("收起代码块")
                 } else {
-                    "展开代码块"
+                    tr("展开代码块")
                 })
                 .child(
                     gpui::svg()

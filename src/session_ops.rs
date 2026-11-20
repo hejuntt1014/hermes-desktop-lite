@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use anyhow::{Context as _, Result};
 use gpui::{Context, Window};
 use serde_json::{Value, json};
@@ -42,7 +44,7 @@ impl Desktop {
             .filter(|session| session.attached && !session.runtime.is_empty())
             .map(|session| session.runtime.clone());
         if !self.canonical && through.is_some() && runtime_session.is_none() {
-            self.banner = Some("请等待会话恢复后再分叉".into());
+            self.banner = Some(tr("请等待会话恢复后再分叉").into());
             cx.notify();
             return;
         }
@@ -94,7 +96,7 @@ impl Desktop {
         cx.spawn_in(window, async move |view, cx| {
             let result = preparation
                 .await
-                .context("无法读取分叉边界")
+                .context(tr("无法读取分叉边界"))
                 .and_then(|result| result);
             let _ = view.update_in(cx, |this, _, cx| {
                 let Some(plan) = this
@@ -108,7 +110,13 @@ impl Desktop {
                     Ok(command) => command,
                     Err(error) => {
                         this.branch_requests.remove(&branch);
-                        this.banner = Some(format!("无法分叉 · {error}").into());
+                        this.banner = Some(
+                            crate::i18n::format_text!(
+                                "无法分叉 · {error}",
+                                "Could not fork · {error}"
+                            )
+                            .into(),
+                        );
                         cx.notify();
                         return;
                     }
@@ -123,7 +131,7 @@ impl Desktop {
                         origin_tab,
                     },
                 ) {
-                    this.banner = Some("网关已离线，连接后可重试分叉".into());
+                    this.banner = Some(tr("网关已离线，连接后可重试分叉").into());
                 }
                 cx.notify();
             });
@@ -162,7 +170,10 @@ impl Desktop {
             {
                 self.branch_requests.remove(&branch);
             }
-            self.banner = Some(format!("无法分叉 · {}", rpc_error(error)).into());
+            self.banner = Some(
+                crate::i18n::format_text!("无法分叉 · {}", "Could not fork · {}", rpc_error(error))
+                    .into(),
+            );
             return;
         }
         let canonical = self
@@ -180,12 +191,12 @@ impl Desktop {
             .find_map(|key| response[*key].as_str().filter(|id| !id.is_empty()))
             .map(str::to_owned)
         else {
-            self.banner = Some("网关未返回分叉会话标识，可重试".into());
+            self.banner = Some(tr("网关未返回分叉会话标识，可重试").into());
             return;
         };
         self.branch_requests.remove(&branch);
         let title = match string(response, "title") {
-            "" => format!("{} · 分叉", target.title),
+            "" => crate::i18n::format_text!("{} · 分叉", "{} · Fork", target.title),
             title => title.to_owned(),
         };
         let session = self.sessions.entry(id.clone()).or_default();
@@ -247,7 +258,7 @@ async fn prepare_branch(
         let (revision, generation) = gateway
             .session_version(&target.id, &target.profile)
             .await?
-            .context("网关未提供分叉所需的会话版本")?;
+            .context(tr("网关未提供分叉所需的会话版本"))?;
         let payload = match through {
             Some(point) => {
                 let id = match point.row_id {
@@ -270,7 +281,7 @@ async fn prepare_branch(
         (
             "session.branch",
             json!({
-                "session_id":runtime_session.context("请等待会话恢复后再分叉")?,
+                "session_id":runtime_session.context(tr("请等待会话恢复后再分叉"))?,
                 "count":count, "idempotency_key":request_id,
             }),
         )
@@ -322,12 +333,12 @@ async fn resolve_branch_boundary(
         };
         if matches {
             if found.is_some() {
-                anyhow::bail!("回复的保存位置不唯一，请刷新会话后重试");
+                anyhow::bail!(tr("回复的保存位置不唯一，请刷新会话后重试"));
             }
-            found = Some((id.context("网关未返回回复的保存位置")?, count));
+            found = Some((id.context(tr("网关未返回回复的保存位置"))?, count));
         }
     }
-    found.context("找不到这条已保存的回复，请刷新会话后重试")
+    found.context(tr("找不到这条已保存的回复，请刷新会话后重试"))
 }
 
 fn branch_has_content(content: &Value) -> bool {

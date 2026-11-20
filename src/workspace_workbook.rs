@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     io::Cursor,
     sync::{Arc, Mutex},
@@ -36,20 +38,20 @@ pub(super) struct Sheet {
 
 impl Workbook {
     pub fn open(bytes: Vec<u8>) -> Result<Self> {
-        let mut archive =
-            zip::ZipArchive::new(Cursor::new(bytes.as_slice())).context("无法读取 XLSX 工作簿")?;
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes.as_slice()))
+            .context(tr("无法读取 XLSX 工作簿"))?;
         if archive.len() > 8192 {
-            bail!("工作簿超过预览大小限制，请下载查看");
+            bail!(tr("工作簿超过预览大小限制，请下载查看"));
         }
         let mut expanded = 0;
         for index in 0..archive.len() {
             expanded += u128::from(archive.by_index_raw(index)?.size());
             if expanded > MAX_EXPANDED_BYTES {
-                bail!("工作簿超过预览大小限制，请下载查看");
+                bail!(tr("工作簿超过预览大小限制，请下载查看"));
             }
         }
         drop(archive);
-        let reader = Xlsx::new(Cursor::new(bytes)).context("无法读取 XLSX 工作簿")?;
+        let reader = Xlsx::new(Cursor::new(bytes)).context(tr("无法读取 XLSX 工作簿"))?;
         let names: Vec<_> = reader
             .sheets_metadata()
             .iter()
@@ -58,7 +60,7 @@ impl Workbook {
             })
             .map(|sheet| SharedString::from(sheet.name.clone()))
             .collect();
-        let name = names.first().context("此工作簿没有可预览的工作表")?;
+        let name = names.first().context(tr("此工作簿没有可预览的工作表"))?;
         let reader = Arc::new(Mutex::new(reader));
         let sheet = Some(Self::read_sheet(&reader, name));
         Ok(Self {
@@ -81,7 +83,7 @@ impl Workbook {
     fn read_sheet(reader: &ReaderHandle, name: &str) -> Result<Arc<Sheet>, SharedString> {
         let mut reader = reader
             .lock()
-            .map_err(|_| SharedString::from("无法读取工作表"))?;
+            .map_err(|_| SharedString::from(tr("无法读取工作表")))?;
         Sheet::read(&mut reader, name)
             .map(Arc::new)
             .map_err(|error| error.to_string().into())
@@ -92,7 +94,7 @@ impl Sheet {
     fn read(book: &mut Xlsx<Cursor<Vec<u8>>>, name: &str) -> Result<Self> {
         let mut source = book
             .worksheet_cells_reader(name)
-            .context("无法读取工作表")?;
+            .context(tr("无法读取工作表"))?;
         let dimensions = source.dimensions();
         let mut clipped =
             dimensions.end.0 as usize >= MAX_ROWS || dimensions.end.1 as usize >= MAX_COLUMNS;
@@ -101,7 +103,7 @@ impl Sheet {
         let mut retained = 0;
         while let Some(cell) = source
             .next_cell_with_formula()
-            .context("工作表内容无法解析")?
+            .context(tr("工作表内容无法解析"))?
         {
             let (row, column) = (cell.pos.0 as usize, cell.pos.1 as usize);
             if row >= MAX_ROWS || retained >= MAX_VALUES {
@@ -162,7 +164,7 @@ impl Sheet {
 
 pub(super) fn grid(sheet: Arc<Sheet>, scroll: &UniformListScrollHandle) -> Div {
     if sheet.rows.is_empty() {
-        return super::preview_status(Some("此工作表为空".into()));
+        return super::preview_status(Some(tr("此工作表为空").into()));
     }
     let count = sheet.rows.len();
     let clipped = sheet.clipped;
@@ -263,8 +265,8 @@ pub(super) fn grid(sheet: Arc<Sheet>, scroll: &UniformListScrollHandle) -> Div {
                     .py_1()
                     .text_size(px(11.))
                     .text_color(rgb(0x768294))
-                    .child(format!(
-                        "预览前 {count} 行、{columns} 列，下载可查看完整工作表"
+                    .child(crate::i18n::format_text!(
+                        "预览前 {count} 行、{columns} 列，下载可查看完整工作表", "Showing the first {count} rows and {columns} columns. Download the workbook to see the rest."
                     )),
             )
         })

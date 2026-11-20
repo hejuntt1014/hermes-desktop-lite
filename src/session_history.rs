@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::HashSet;
 
 use anyhow::{Context as _, Result, bail};
@@ -49,9 +51,9 @@ impl Desktop {
                                 gateway.recent_history_page(&id, &profile, offset).await
                             })
                             .await
-                            .context("无法读取会话历史")??;
+                            .context(tr("无法读取会话历史"))??;
                         if resolved.as_ref().is_some_and(|id| id != &page.resolved) {
-                            bail!("会话在读取历史期间切换了续接记录");
+                            bail!(tr("会话在读取历史期间切换了续接记录"));
                         }
                         resolved.get_or_insert(page.resolved);
                         if offset == 0 {
@@ -63,7 +65,7 @@ impl Desktop {
                             })
                         });
                         if offset > 0 && page.rows.is_empty() && page.next.is_some() {
-                            bail!("网关重复返回同一页历史");
+                            bail!(tr("网关重复返回同一页历史"));
                         }
                         if offset == 0 {
                             let displayed = desktop.update(cx, |this, cx| {
@@ -95,7 +97,10 @@ impl Desktop {
                     if let Err(error) = result
                         && let Some(session) = this.sessions.get_mut(&key)
                     {
-                        session.history_error = Some(format!("历史读取未完成 · {error}"));
+                        session.history_error = Some(crate::i18n::format_text!(
+                            "历史读取未完成 · {error}",
+                            "History loading was interrupted · {error}"
+                        ));
                     }
                     cx.notify();
                 });

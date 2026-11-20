@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::ops::Range;
 
 use gpui::SharedString;
@@ -47,7 +49,10 @@ pub(super) fn project(
             } else if let Some(image) = message.images().first() {
                 image.name.clone()
             } else {
-                files.first().cloned().unwrap_or_else(|| "用户消息".into())
+                files
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| tr("用户消息").into())
             };
             turns.push(TurnMarker {
                 item: items.len(),
@@ -142,12 +147,28 @@ pub(super) fn tool_group(tool: &Tool) -> Option<ToolGroup> {
 impl ToolGroup {
     pub(super) fn label(self, total: usize, pending: usize) -> String {
         match (self, pending > 0) {
-            (Self::Commands, false) => format!("执行了 {total} 条命令"),
-            (Self::Commands, true) => format!("正在执行命令 · {pending} / {total}"),
-            (Self::Reading, false) => format!("查看了 {total} 项文件记录"),
-            (Self::Reading, true) => format!("正在查看文件 · {pending} / {total}"),
-            (Self::Search, false) => format!("完成了 {total} 项搜索"),
-            (Self::Search, true) => format!("正在搜索 · {pending} / {total}"),
+            (Self::Commands, false) => {
+                crate::i18n::format_text!("执行了 {total} 条命令", "Ran {total} command(s)")
+            }
+            (Self::Commands, true) => crate::i18n::format_text!(
+                "正在执行命令 · {pending} / {total}",
+                "Running commands · {pending} / {total}"
+            ),
+            (Self::Reading, false) => crate::i18n::format_text!(
+                "查看了 {total} 项文件记录",
+                "Viewed {total} file record(s)"
+            ),
+            (Self::Reading, true) => crate::i18n::format_text!(
+                "正在查看文件 · {pending} / {total}",
+                "Viewing files · {pending} / {total}"
+            ),
+            (Self::Search, false) => {
+                crate::i18n::format_text!("完成了 {total} 项搜索", "Completed {total} search(es)")
+            }
+            (Self::Search, true) => crate::i18n::format_text!(
+                "正在搜索 · {pending} / {total}",
+                "Searching · {pending} / {total}"
+            ),
         }
     }
 }

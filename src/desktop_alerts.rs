@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use super::Desktop;
 use gpui::{Context, Window};
 
@@ -7,11 +9,44 @@ pub(super) enum Alert {
     Preview,
 }
 
-impl Desktop {
-    pub(super) fn sync_prompt_alerts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !cfg!(windows) {
+pub(super) struct AlertTarget {
+    owner: String,
+    profile: String,
+    session: String,
+    title: String,
+    request: Option<String>,
+}
+
+impl AlertTarget {
+    fn open(self, desktop: &mut Desktop, window: &mut Window, cx: &mut Context<Desktop>) {
+        if desktop.settings.workspace_key() != self.owner {
             return;
         }
+        window.activate_window();
+        desktop.close_settings(window, cx);
+        desktop.close_palette(window, cx);
+        if desktop.profile_editor.open {
+            desktop.close_profile_editor(window, cx);
+        }
+        if desktop.cron.open {
+            desktop.close_cron(window, cx);
+        }
+        if let Some(summary) = crate::session::Summary::from_wire(&serde_json::json!({
+            "id": self.session,
+            "profile": self.profile,
+            "title": self.title,
+        })) {
+            desktop.open_session(&summary, true, window, cx);
+            if let Some(id) = self.request {
+                desktop.show_questions(&id, cx);
+            }
+            cx.notify();
+        }
+    }
+}
+
+impl Desktop {
+    pub(super) fn sync_prompt_alerts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let waiting = self
             .sessions
             .iter()
@@ -30,16 +65,27 @@ impl Desktop {
     }
 
     #[cfg(not(windows))]
-    pub(super) fn desktop_alert(
-        &mut self,
-        _: &str,
-        _: Alert,
-        _: &mut Window,
-        _: &mut Context<Self>,
-    ) {
+    pub(super) fn register_notification_handler(&self, window: &Window, cx: &mut Context<Self>) {
+        let view = cx.entity().downgrade();
+        let handle = window.window_handle();
+        cx.on_system_notification_response(move |response, app| {
+            let _ = handle.update(app, |_, window, app| {
+                let _ = view.update(app, |desktop, cx| {
+                    let Some(index) = desktop
+                        .alert_targets
+                        .iter()
+                        .position(|(tag, _)| tag == &response.tag)
+                    else {
+                        return;
+                    };
+                    if let Some((_, target)) = desktop.alert_targets.remove(index) {
+                        target.open(desktop, window, cx);
+                    }
+                });
+            });
+        });
     }
 
-    #[cfg(windows)]
     pub(super) fn desktop_alert(
         &mut self,
         key: &str,
@@ -60,7 +106,7 @@ impl Desktop {
             _ => None,
         };
         let heading = if preview {
-            "Hermes Lite · 通知预览"
+            tr("Hermes Lite · 通知预览")
         } else if let Some(id) = &request {
             if self
                 .sessions
@@ -68,26 +114,83 @@ impl Desktop {
                 .and_then(|s| s.prompts.get(id))
                 .is_some_and(|p| p.clarify)
             {
-                "等待你回答"
+                tr("等待你回答")
             } else {
-                "等待你审批"
+                tr("等待你审批")
             }
         } else {
-            "回复已完成"
+            tr("回复已完成")
         };
         let detail = format!("{} · {}", self.profile_label(&profile), tab.title);
-        let title = tab.title.clone();
-        let session = key.to_owned();
-        let owner = self.settings.workspace_key().to_owned();
+        let target = AlertTarget {
+            owner: self.settings.workspace_key().to_owned(),
+            profile,
+            session: key.to_owned(),
+            title: tab.title.clone(),
+            request,
+        };
+        self.post_desktop_alert(heading, detail, target, preview, window, cx);
+    }
+
+    #[cfg(not(windows))]
+    fn post_desktop_alert(
+        &mut self,
+        heading: &str,
+        detail: String,
+        target: AlertTarget,
+        _: bool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.alert_targets.len() >= 64
+            && let Some((old, _)) = self.alert_targets.pop_front()
+        {
+            cx.dismiss_system_notification(old.as_ref());
+        }
+        let tag: gpui::SharedString = uuid::Uuid::new_v4().to_string().into();
+        self.alert_targets.push_back((tag.clone(), target));
+        cx.show_system_notification(gpui::SystemNotification {
+            tag,
+            title: heading.to_owned().into(),
+            body: detail.into(),
+            actions: vec![gpui::SystemNotificationAction {
+                id: "open-conversation".into(),
+                label: tr("打开会话").into(),
+            }],
+        });
+    }
+
+    #[cfg(windows)]
+    fn post_desktop_alert(
+        &mut self,
+        heading: &str,
+        detail: String,
+        target: AlertTarget,
+        preview: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let result = windows_toast(heading, &detail);
         let (toast, mut events) = match result {
             Ok(r) => r,
             Err(e) => {
                 if preview {
-                    self.banner = Some(format!("Windows 通知不可用 · {e}").into());
+                    self.banner = Some(
+                        crate::i18n::format_text!(
+                            "Windows 通知不可用 · {e}",
+                            "Windows notifications unavailable · {e}"
+                        )
+                        .into(),
+                    );
                     cx.notify();
                 }
-                eprintln!("Windows 通知发送失败: {e}");
+                eprintln!(
+                    "{}",
+                    crate::i18n::format_text!(
+                        "Windows 通知发送失败: {e}",
+                        "Could not send Windows notification: {e}"
+                    )
+                );
                 return;
             }
         };
@@ -105,27 +208,7 @@ impl Desktop {
                 return;
             }
             let _ = view.update_in(cx, move |this, window, cx| {
-                if this.settings.workspace_key() != owner {
-                    return;
-                }
-                window.activate_window();
-                this.close_settings(window, cx);
-                this.close_palette(window, cx);
-                if this.profile_editor.open {
-                    this.close_profile_editor(window, cx)
-                }
-                if this.cron.open {
-                    this.close_cron(window, cx)
-                }
-                let summary = crate::session::Summary::from_wire(
-                    &serde_json::json!({"id":session,"profile":profile,"title":title}),
-                )
-                .unwrap();
-                this.open_session(&summary, true, window, cx);
-                if let Some(id) = request {
-                    this.show_questions(&id, cx)
-                }
-                cx.notify();
+                target.open(this, window, cx);
             });
         })
         .detach();

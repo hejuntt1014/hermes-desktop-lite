@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -82,25 +84,34 @@ impl CronJob {
     pub fn status(&self, now: i64) -> (String, u32) {
         use crate::style::ACCENT;
         if self.running() {
-            return ("执行中".into(), ACCENT);
+            return (tr("执行中").into(), ACCENT);
         }
         match self.state.as_deref() {
-            Some("paused") => ("已暂停".into(), 0xd09240),
-            Some("completed") => ("已完成".into(), 0x9ba3ad),
-            Some("error") => ("异常".into(), 0xb8605d),
-            _ if !self.enabled => ("已停用".into(), 0x9ba3ad),
+            Some("paused") => (tr("已暂停").into(), 0xd09240),
+            Some("completed") => (tr("已完成").into(), 0x9ba3ad),
+            Some("error") => (tr("异常").into(), 0xb8605d),
+            _ if !self.enabled => (tr("已停用").into(), 0x9ba3ad),
             _ => {
                 let Some(at) = self.next_run() else {
-                    return ("待调度".into(), ACCENT);
+                    return (tr("待调度").into(), ACCENT);
                 };
                 let delta = at.timestamp() - now;
                 match delta {
-                    ..=-901 => ("已逾期".into(), 0xb8605d),
-                    ..=0 => ("待执行".into(), ACCENT),
-                    1..=59 => ("即将执行".into(), ACCENT),
-                    60..=3599 => (format!("{}分钟后", delta / 60), ACCENT),
-                    3600..=86399 => (format!("{}小时后", delta / 3600), ACCENT),
-                    _ => (format!("{}天后", delta / 86400), ACCENT),
+                    ..=-901 => (tr("已逾期").into(), 0xb8605d),
+                    ..=0 => (tr("待执行").into(), ACCENT),
+                    1..=59 => (tr("即将执行").into(), ACCENT),
+                    60..=3599 => (
+                        crate::i18n::format_text!("{}分钟后", "In {} min", delta / 60),
+                        ACCENT,
+                    ),
+                    3600..=86399 => (
+                        crate::i18n::format_text!("{}小时后", "In {} hr", delta / 3600),
+                        ACCENT,
+                    ),
+                    _ => (
+                        crate::i18n::format_text!("{}天后", "In {} days", delta / 86400),
+                        ACCENT,
+                    ),
                 }
             }
         }
@@ -112,7 +123,7 @@ pub(super) fn cron_datetime(timestamp: Option<&str>) -> Option<String> {
     Some(
         timestamp
             .with_timezone(&Local)
-            .format("%m月%d日 %H:%M")
+            .format(tr("%m月%d日 %H:%M"))
             .to_string(),
     )
 }
@@ -153,10 +164,10 @@ pub(super) enum JobAction {
 impl JobAction {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Pause => "暂停",
-            Self::Resume => "恢复",
-            Self::Run => "立即执行",
-            Self::Delete => "删除",
+            Self::Pause => tr("暂停"),
+            Self::Resume => tr("恢复"),
+            Self::Run => tr("立即执行"),
+            Self::Delete => tr("删除"),
         }
     }
 }
@@ -351,7 +362,7 @@ impl Desktop {
             let result = gateway.api(Method::GET, &path, &args, None).await?;
             let rows = result["runs"]
                 .as_array()
-                .ok_or_else(|| anyhow::anyhow!("网关返回了无效的执行记录"))?;
+                .ok_or_else(|| anyhow::anyhow!(tr("网关返回了无效的执行记录")))?;
             Ok::<_, anyhow::Error>(
                 rows.iter()
                     .filter_map(|wire| {
@@ -364,10 +375,10 @@ impl Desktop {
                             .and_then(|at| DateTime::<Utc>::from_timestamp(at as i64, 0))
                             .map(|at| {
                                 at.with_timezone(&Local)
-                                    .format("%m月%d日 %H:%M")
+                                    .format(tr("%m月%d日 %H:%M"))
                                     .to_string()
                             })
-                            .unwrap_or_else(|| "时间未知".into());
+                            .unwrap_or_else(|| tr("时间未知").into());
                         let script = wire["source"] == "cron_output";
                         let (title, outcome) = run_title(&row.title, script);
                         let preview = wire["preview"].as_str().map(clean_run_preview);
@@ -445,7 +456,7 @@ impl Desktop {
             schedule: cx.new(|cx| {
                 InputState::new(window, cx)
                     .default_value(schedule.to_owned())
-                    .placeholder("例如 0 9 * * 1-5 或 every 30m")
+                    .placeholder(tr("例如 0 9 * * 1-5 或 every 30m"))
             }),
             deliver: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -456,7 +467,7 @@ impl Desktop {
                 TextareaState::new(window, cx)
                     .auto_grow(3, 8)
                     .default_value(prompt.to_owned())
-                    .placeholder("到点后要执行的内容")
+                    .placeholder(tr("到点后要执行的内容"))
             }),
             script_only: job.is_some_and(|job| {
                 job.no_agent
@@ -481,7 +492,7 @@ impl Desktop {
             || schedule.trim().is_empty()
             || (!editor.script_only && prompt.trim().is_empty())
         {
-            self.cron.error = Some("请填写任务名称、计划和执行指令".into());
+            self.cron.error = Some(tr("请填写任务名称、计划和执行指令").into());
             cx.notify();
             return;
         }
@@ -619,17 +630,17 @@ fn sort_jobs(jobs: &mut [CronJob]) {
 fn run_title(title: &str, script: bool) -> (String, Option<(&'static str, u32)>) {
     let (prefix, subtitle) = title.split_once(" · ").unwrap_or((title, ""));
     let outcome = match prefix {
-        "COMPLETED" | "SUCCESS" => Some(("已完成", 0x318873)),
-        "FAILED" | "ERROR" => Some(("失败", 0xb8605d)),
-        "CANCELLED" => Some(("已取消", 0x88716b)),
-        "MISSED" => Some(("已错过", 0xc18e48)),
+        "COMPLETED" | "SUCCESS" => Some((tr("已完成"), 0x318873)),
+        "FAILED" | "ERROR" => Some((tr("失败"), 0xb8605d)),
+        "CANCELLED" => Some((tr("已取消"), 0x88716b)),
+        "MISSED" => Some((tr("已错过"), 0xc18e48)),
         _ => None,
     };
     let title = if outcome.is_some() { subtitle } else { title };
     let title = if script
         && (title.is_empty() || title.starts_with("# Cron Job:") || title == "Script-only run")
     {
-        "脚本运行"
+        tr("脚本运行")
     } else {
         title
     };
@@ -644,9 +655,9 @@ fn clean_run_preview(text: &str) -> String {
         .split_once("**Status:**")
         .map_or("", |(_, text)| text.trim());
     match status {
-        "silent (empty output)" => "无输出".into(),
-        "silent (wakeAgent=false)" => "本次未唤醒智能体".into(),
-        "no_change (agent run suppressed)" => "无变化，本次未唤醒智能体".into(),
+        "silent (empty output)" => tr("无输出").into(),
+        "silent (wakeAgent=false)" => tr("本次未唤醒智能体").into(),
+        "no_change (agent run suppressed)" => tr("无变化，本次未唤醒智能体").into(),
         value => value.to_owned(),
     }
 }

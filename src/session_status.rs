@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Local, Utc};
@@ -46,17 +48,17 @@ impl ApprovalMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Manual => "手动",
-            Self::Smart => "智能",
-            Self::Off => "关闭",
+            Self::Manual => tr("手动"),
+            Self::Smart => tr("智能"),
+            Self::Off => tr("关闭"),
         }
     }
 
     fn detail(self) -> &'static str {
         match self {
-            Self::Manual => "需要审批的操作会先询问",
-            Self::Smart => "自动评估操作，必要时询问",
-            Self::Off => "无需审批即可运行",
+            Self::Manual => tr("需要审批的操作会先询问"),
+            Self::Smart => tr("自动评估操作，必要时询问"),
+            Self::Off => tr("无需审批即可运行"),
         }
     }
 }
@@ -111,7 +113,7 @@ impl CodexUsage {
                     Some(UsageWindow {
                         label: row["label"]
                             .as_str()
-                            .unwrap_or("订阅用量")
+                            .unwrap_or(tr("订阅用量"))
                             .to_owned()
                             .into(),
                         used: used.clamp(0., 100.),
@@ -129,7 +131,10 @@ impl CodexUsage {
                         label: row["label"]
                             .as_str()
                             .filter(|label| !label.is_empty())
-                            .map_or_else(|| format!("账户 {}", index + 1), str::to_owned)
+                            .map_or_else(
+                                || crate::i18n::format_text!("账户 {}", "Account {}", index + 1),
+                                str::to_owned,
+                            )
                             .into(),
                         windows: windows(row),
                     })
@@ -147,7 +152,11 @@ impl CodexUsage {
 
     fn badge(&self) -> Option<String> {
         if self.accounts.len() > 1 {
-            return Some(format!("Codex · {} 个账户", self.accounts.len()));
+            return Some(crate::i18n::format_text!(
+                "Codex · {} 个账户",
+                "Codex · {} account(s)",
+                self.accounts.len()
+            ));
         }
         let remaining = self
             .accounts
@@ -212,7 +221,7 @@ impl Desktop {
     pub(super) fn lose_approval_mode(&mut self, profile: &str, write: bool) {
         self.approval_status.pending.remove(profile);
         if write {
-            self.banner = Some("未收到审批模式确认".into());
+            self.banner = Some(tr("未收到审批模式确认").into());
         }
     }
 
@@ -250,12 +259,12 @@ impl Desktop {
         self.out.as_ref()?;
         let profile = self.model_profile();
         let current = self.approval_status.modes.get(&profile).copied();
-        let label = current.map_or("审批", ApprovalMode::label);
+        let label = current.map_or(tr("审批"), ApprovalMode::label);
         let button = Button::new("approval-mode")
             .ghost()
             .compact()
             .h(px(20.))
-            .tooltip("审批模式")
+            .tooltip(tr("审批模式"))
             .child(
                 div()
                     .flex()
@@ -311,7 +320,7 @@ impl Desktop {
                                 .text_size(px(12.))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(rgb(MUTED))
-                                .child("审批模式"),
+                                .child(tr("审批模式")),
                         )
                         .children(
                             [ApprovalMode::Manual, ApprovalMode::Smart, ApprovalMode::Off]
@@ -373,9 +382,14 @@ impl Desktop {
         let usage = session.context?;
         let percent = (100. * usage.used as f64 / usage.maximum as f64).clamp(0., 100.);
         let amount = format!("{} / {}", tokens(usage.used), tokens(usage.maximum));
-        let label = format!(
+        let label = crate::i18n::format_text!(
             "上下文 {amount} · {percent:.0}%{}",
-            if usage.estimated { "（估算）" } else { "" }
+            "Context {amount} · {percent:.0}%{}",
+            if usage.estimated {
+                tr("（估算）")
+            } else {
+                ""
+            }
         );
         Some(
             div()
@@ -391,7 +405,12 @@ impl Desktop {
                 .tooltip(move |window, cx| {
                     let detail = usage.cache_hit.map_or_else(
                         || label.clone(),
-                        |hit| format!("{label}\n缓存命中 {hit:.0}%"),
+                        |hit| {
+                            crate::i18n::format_text!(
+                                "{label}\n缓存命中 {hit:.0}%",
+                                "{label}\nCache hit {hit:.0}%"
+                            )
+                        },
                     );
                     Tooltip::new(detail).build(window, cx)
                 })
@@ -417,7 +436,7 @@ impl Desktop {
         let label = self
             .codex_usage_for(&profile)
             .and_then(CodexUsage::badge)
-            .unwrap_or_else(|| "Codex 额度".to_owned());
+            .unwrap_or_else(|| tr("Codex 额度").to_owned());
         let desktop = cx.entity().downgrade();
         let refresh = desktop.clone();
         Some(
@@ -433,7 +452,7 @@ impl Desktop {
                         .ghost()
                         .compact()
                         .h(px(20.))
-                        .tooltip("查看 Codex 订阅额度")
+                        .tooltip(tr("查看 Codex 订阅额度"))
                         .child(
                             div()
                                 .text_size(px(11.))
@@ -446,7 +465,7 @@ impl Desktop {
                         div()
                             .text_size(px(12.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Codex 订阅额度"),
+                            .child(tr("Codex 订阅额度")),
                     );
                     let Some(owner) = desktop.upgrade() else {
                         return panel;
@@ -460,7 +479,7 @@ impl Desktop {
                             div()
                                 .text_size(px(11.))
                                 .text_color(rgb(MUTED))
-                                .child("网关暂无可用额度数据"),
+                                .child(tr("网关暂无可用额度数据")),
                         );
                     }
                     panel
@@ -500,7 +519,7 @@ fn quota_account(account: &UsageAccount) -> Div {
                 div()
                     .text_size(px(11.))
                     .text_color(rgb(MUTED))
-                    .child("暂无额度数据"),
+                    .child(tr("暂无额度数据")),
             )
         })
         .children(windows.into_iter().map(|entry| {
@@ -513,16 +532,20 @@ fn quota_account(account: &UsageAccount) -> Div {
                         .justify_between()
                         .text_size(px(12.))
                         .child(entry.label.clone())
-                        .child(format!("剩余 {:.0}%", entry.remaining())),
+                        .child(crate::i18n::format_text!(
+                            "剩余 {:.0}%",
+                            "{:.0}% left",
+                            entry.remaining()
+                        )),
                 )
                 .children(entry.reset.map(|date| {
-                    div()
-                        .text_size(px(10.))
-                        .text_color(rgb(MUTED))
-                        .child(format!(
+                    div().text_size(px(10.)).text_color(rgb(MUTED)).child(
+                        crate::i18n::format_text!(
                             "{} 重置",
+                            "Resets {}",
                             date.with_timezone(&Local).format("%m-%d %H:%M")
-                        ))
+                        ),
+                    )
                 }))
         }))
 }

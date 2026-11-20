@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{env, sync::Arc};
 
 use anyhow::{Context as _, Result, bail};
@@ -237,7 +239,7 @@ impl Desktop {
                 let root = scope.root(&gateway).await?;
                 trail.push(root);
             }
-            let path = trail.last().context("没有可用的工作区目录")?;
+            let path = trail.last().context(tr("没有可用的工作区目录"))?;
             let entries = load_entries(&gateway, &scope, path).await?;
             Ok::<_, anyhow::Error>((trail, entries))
         });
@@ -253,7 +255,7 @@ impl Desktop {
                         this.files.list_scroll = Default::default();
                     }
                     Ok(Err(error)) => this.files.error = Some(error.to_string().into()),
-                    Err(_) => this.files.error = Some("无法读取远程目录".into()),
+                    Err(_) => this.files.error = Some(tr("无法读取远程目录").into()),
                 }
                 cx.notify();
             });
@@ -371,7 +373,7 @@ impl Desktop {
                 let preview = match result {
                     Ok(Ok(preview)) => preview,
                     Ok(Err(error)) => FilePreview::Failed(error.to_string().into()),
-                    Err(_) => FilePreview::Failed("无法读取文件".into()),
+                    Err(_) => FilePreview::Failed(tr("无法读取文件").into()),
                 };
                 if let Some(fragment) = &fragment
                     && let FilePreview::Text {
@@ -405,7 +407,9 @@ impl Desktop {
         let parse = self.runtime.spawn_blocking(read);
         let abort = parse.abort_handle();
         let task = cx.spawn(async move |view, cx| {
-            let result = parse.await.unwrap_or_else(|_| Err("无法读取工作表".into()));
+            let result = parse
+                .await
+                .unwrap_or_else(|_| Err(tr("无法读取工作表").into()));
             let _ = view.update(cx, |this, cx| {
                 if let Some(FilePreview::Workbook(book)) = &mut this.files.preview
                     && book.selected == index
@@ -546,7 +550,8 @@ impl Desktop {
         let runtime = self.runtime.clone();
         cx.spawn(async move |view, cx| {
             let result = async {
-                let Some(destination) = target.await.context("保存对话框已关闭")?? else {
+                let Some(destination) = target.await.context(tr("保存对话框已关闭"))??
+                else {
                     return Ok(None);
                 };
                 let name = destination
@@ -555,8 +560,9 @@ impl Desktop {
                     .to_string_lossy()
                     .into_owned();
                 let _ = view.update(cx, |this, cx| {
-                    this.file_download.status =
-                        Some(DownloadStatus::Saving(format!("正在保存 {name}").into()));
+                    this.file_download.status = Some(DownloadStatus::Saving(
+                        crate::i18n::format_text!("正在保存 {name}", "Saving {name}").into(),
+                    ));
                     cx.notify();
                 });
                 runtime
@@ -573,11 +579,14 @@ impl Desktop {
             let _ = view.update(cx, |this, cx| {
                 this.file_download.busy = false;
                 this.file_download.status = match result {
-                    Ok(Some(name)) => Some(DownloadStatus::Saved(format!("已保存 {name}").into())),
+                    Ok(Some(name)) => Some(DownloadStatus::Saved(
+                        crate::i18n::format_text!("已保存 {name}", "Saved {name}").into(),
+                    )),
                     Ok(None) => None,
-                    Err(error) => {
-                        Some(DownloadStatus::Failed(format!("保存失败 · {error}").into()))
-                    }
+                    Err(error) => Some(DownloadStatus::Failed(
+                        crate::i18n::format_text!("保存失败 · {error}", "Save failed · {error}")
+                            .into(),
+                    )),
                 };
                 cx.notify();
             });
@@ -644,7 +653,7 @@ impl Desktop {
         .min_h_0()
         .w_full();
         let status: Option<SharedString> = if loading {
-            Some("正在读取目录…".into())
+            Some(tr("正在读取目录…").into())
         } else if let Some(error) = &self.files.error {
             Some(error.clone())
         } else if self.files.scope.is_none() {
@@ -653,9 +662,9 @@ impl Desktop {
                 .and_then(|key| self.sessions.get(key))
                 .and_then(|session| session.error.clone())
                 .map(Into::into)
-                .or_else(|| Some("正在恢复会话目录…".into()))
+                .or_else(|| Some(tr("正在恢复会话目录…").into()))
         } else if self.files.entries.is_empty() {
-            Some("此目录为空".into())
+            Some(tr("此目录为空").into())
         } else {
             None
         };
@@ -696,7 +705,9 @@ impl Desktop {
         let nested = folders.len() > 1;
         if let Some(root) = folders.first().filter(|_| nested) {
             let root = root.clone();
-            let label: SharedString = format!("工作区根目录 · {root}").into();
+            let label: SharedString =
+                crate::i18n::format_text!("工作区根目录 · {root}", "Workspace root · {root}")
+                    .into();
             path_bar = path_bar
                 .child(
                     Button::new("folder-root")
@@ -724,7 +735,7 @@ impl Desktop {
                         .compact()
                         .size(px(20.))
                         .p_0()
-                        .tooltip("上级目录")
+                        .tooltip(tr("上级目录"))
                         .child(symbol(icons::ELLIPSIS, 13.))
                         .dropdown_menu_with_anchor(Anchor::TopLeft, move |menu, _, _| {
                             ancestors
@@ -756,7 +767,10 @@ impl Desktop {
                 .child(symbol(icons::CHEVRON_RIGHT, 9.));
         }
         let folder_path = folders.last().map(String::as_str);
-        let current = folder_path.map(path_name).unwrap_or("工作区").to_owned();
+        let current = folder_path
+            .map(path_name)
+            .unwrap_or(tr("工作区"))
+            .to_owned();
         path_bar = path_bar.child(
             div()
                 .id("folder-current")
@@ -786,14 +800,14 @@ impl Desktop {
             .children(nested.then(|| {
                 let parent = folders.len() - 2;
                 let path = folders[parent].clone();
-                icon_button("folder-parent", icons::BACK, "上一级目录")
+                icon_button("folder-parent", icons::BACK, tr("上一级目录"))
                     .size(px(21.))
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.visit_folder(parent, &path, cx)),
                     )
             }))
             .child(
-                icon_button("folder-refresh", icons::REFRESH, "刷新目录")
+                icon_button("folder-refresh", icons::REFRESH, tr("刷新目录"))
                     .size(px(21.))
                     .on_click(cx.listener(|this, _, _, cx| {
                         if this.files.directory_job.is_some() {
@@ -811,7 +825,7 @@ impl Desktop {
 
     fn preview_element(&self, window: &mut Window, pane_width: f32, cx: &mut Context<Self>) -> Div {
         let Some(file) = &self.files.selected else {
-            return preview_status(Some("选择文件预览".into()));
+            return preview_status(Some(tr("选择文件预览").into()));
         };
         let path = file.path.clone();
         let filename_tip: SharedString = file.path.clone().into();
@@ -845,7 +859,7 @@ impl Desktop {
                     .child(file.name.clone()),
             )
             .child(
-                icon_button("copy-remote-file-path", icons::LINK, "复制远程路径").on_click(
+                icon_button("copy-remote-file-path", icons::LINK, tr("复制远程路径")).on_click(
                     move |_, _, app| {
                         app.write_to_clipboard(ClipboardItem::new_string(path.clone()));
                     },
@@ -877,7 +891,7 @@ impl Desktop {
                     }),
             )
             .child(
-                icon_button("download-remote-file", icons::DOWNLOAD, "保存到本机")
+                icon_button("download-remote-file", icons::DOWNLOAD, tr("保存到本机"))
                     .when(download_busy, |button| button.opacity(0.45))
                     .on_click(cx.listener(|this, _, _, cx| this.download_workspace_file(cx))),
             );
@@ -896,9 +910,9 @@ impl Desktop {
                         "copy-remote-file-content",
                         crate::icons::COPY,
                         if *shortened {
-                            "复制预览内容"
+                            tr("复制预览内容")
                         } else {
-                            "复制文件内容"
+                            tr("复制文件内容")
                         },
                     )
                     .on_click(move |_, _, app| {
@@ -928,7 +942,7 @@ impl Desktop {
                                 .py_2()
                                 .text_size(px(11.))
                                 .text_color(rgb(0x68778b))
-                                .child("仅显示文件开头"),
+                                .child(tr("仅显示文件开头")),
                         )
                     })
             }
@@ -956,7 +970,7 @@ impl Desktop {
                             .rounded(px(5.))
                             .overflow_hidden()
                             .cursor_pointer()
-                            .tooltip(|window, cx| Tooltip::new("查看大图").build(window, cx))
+                            .tooltip(|window, cx| Tooltip::new(tr("查看大图")).build(window, cx))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.preview_workspace_image(&path, window, cx);
                             }))
@@ -968,8 +982,8 @@ impl Desktop {
                     )
             }
             Some(FilePreview::Workbook(book)) => self.workbook_preview(book, cx),
-            Some(FilePreview::Pending) => preview_status(Some("正在读取文件…".into())),
-            Some(FilePreview::Binary) => preview_status(Some("此文件类型没有文本预览".into())),
+            Some(FilePreview::Pending) => preview_status(Some(tr("正在读取文件…").into())),
+            Some(FilePreview::Binary) => preview_status(Some(tr("此文件类型没有文本预览").into())),
             Some(FilePreview::Failed(error)) => preview_status(Some(error.clone())),
             None => preview_status(None),
         };
@@ -1023,7 +1037,7 @@ impl Desktop {
         let sheet = match &book.sheet {
             Some(Ok(sheet)) => workspace_workbook::grid(sheet.clone(), &self.files.preview_scroll),
             Some(Err(error)) => preview_status(Some(error.clone())),
-            None => preview_status(Some("正在读取工作表…".into())),
+            None => preview_status(Some(tr("正在读取工作表…").into())),
         };
         div()
             .flex_1()
@@ -1071,9 +1085,9 @@ impl Desktop {
                     .small()
                     .compact()
                     .h(px(21.))
-                    .tooltip("跳转到文档标题")
+                    .tooltip(tr("跳转到文档标题"))
                     .child(symbol(icons::LIST_DETAILS, 12.))
-                    .label("目录")
+                    .label(tr("目录"))
                     .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                         let mut menu = menu.min_w(px(225.)).max_w(px(370.)).max_h(px(340.));
                         for (index, depth, heading) in &headings {
@@ -1119,8 +1133,8 @@ impl Desktop {
             }))
             .children(
                 [
-                    ("preview-markdown", "预览", false),
-                    ("preview-source", "源码", true),
+                    ("preview-markdown", tr("预览"), false),
+                    ("preview-source", tr("源码"), true),
                 ]
                 .into_iter()
                 .map(|(id, label, source)| {
@@ -1377,10 +1391,10 @@ async fn file_api(
 async fn load_entries(gateway: &Gateway, scope: &Scope, path: &str) -> Result<Vec<FileEntry>> {
     let mut value = file_api(gateway, scope, "api/fs/list", Some(path), false).await?;
     if !string(&value, "error").is_empty() {
-        bail!("网关无法读取此目录");
+        bail!(tr("网关无法读取此目录"));
     }
     let mut entries: Vec<FileEntry> =
-        serde_json::from_value(value["entries"].take()).context("网关未返回有效目录")?;
+        serde_json::from_value(value["entries"].take()).context(tr("网关未返回有效目录"))?;
     entries.retain(|entry| !entry.name.is_empty() && !entry.path.is_empty());
     entries.sort_by_cached_key(|entry| (!entry.is_directory, entry.name.to_lowercase()));
     Ok(entries)
@@ -1393,7 +1407,7 @@ async fn read_text_file(gateway: &Gateway, scope: &Scope, path: &str) -> Result<
     }
     let shortened = value["truncated"] == true;
     let Value::String(mut content) = value["text"].take() else {
-        bail!("网关未返回可预览的文本")
+        bail!(tr("网关未返回可预览的文本"))
     };
     let shortened = shortened || content.len() > PREVIEW_BYTES;
     if content.len() > PREVIEW_BYTES {
@@ -1453,7 +1467,7 @@ pub(super) fn download_name(name: &str) -> String {
         .collect();
     let filename = filename.trim_matches([' ', '.']);
     if filename.is_empty() {
-        "远程文件".to_owned()
+        tr("远程文件").to_owned()
     } else {
         filename.to_owned()
     }

@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::sync::Arc;
 
 use crate::{
@@ -215,8 +217,8 @@ fn message_rewrite_action(
     let key = session.to_owned();
     let weak = entity.downgrade();
     let (id, icon, label) = match kind {
-        RewriteKind::Edit => ("edit-message", icons::PENCIL, "编辑消息"),
-        RewriteKind::Retry => ("retry-answer", icons::REFRESH, "重新生成答复"),
+        RewriteKind::Edit => ("edit-message", icons::PENCIL, tr("编辑消息")),
+        RewriteKind::Retry => ("retry-answer", icons::REFRESH, tr("重新生成答复")),
     };
     Some(
         message_icon_button(id, icon, label).on_click(move |_, window, cx| {
@@ -239,27 +241,27 @@ fn session_date_group(timestamp: i64, today: NaiveDate) -> String {
     let elapsed = (today - day).num_days();
     let weekday = i64::from(today.weekday().num_days_from_monday());
     let month = [
-        "一月",
-        "二月",
-        "三月",
-        "四月",
-        "五月",
-        "六月",
-        "七月",
-        "八月",
-        "九月",
-        "十月",
-        "十一月",
-        "十二月",
+        tr("一月"),
+        tr("二月"),
+        tr("三月"),
+        tr("四月"),
+        tr("五月"),
+        tr("六月"),
+        tr("七月"),
+        tr("八月"),
+        tr("九月"),
+        tr("十月"),
+        tr("十一月"),
+        tr("十二月"),
     ][day.month0() as usize];
     let label = match elapsed {
-        i64::MIN..=0 => "今天早些时候",
-        1 => "昨天",
-        n if n <= weekday => "本周早些时候",
-        n if n <= weekday + 7 => "上周",
-        _ if day.year() == today.year() && day.month() == today.month() => "本月早些时候",
+        i64::MIN..=0 => tr("今天早些时候"),
+        1 => tr("昨天"),
+        n if n <= weekday => tr("本周早些时候"),
+        n if n <= weekday + 7 => tr("上周"),
+        _ if day.year() == today.year() && day.month() == today.month() => tr("本月早些时候"),
         _ if day.year() == today.year() => month,
-        _ => return format!("{}年{month}", day.year()),
+        _ => return crate::i18n::format_text!("{}年{month}", "{} {month}", day.year()),
     };
     label.into()
 }
@@ -541,12 +543,12 @@ impl Render for Desktop {
                                     .text_color(rgb(DANGER))
                                     .text_sm()
                                     .child(div().flex_1().child(banner.clone()))
-                                    .child(control("dismiss-banner", "关闭").on_click(cx.listener(
-                                        |this, _, _, cx| {
+                                    .child(control("dismiss-banner", tr("关闭")).on_click(
+                                        cx.listener(|this, _, _, cx| {
                                             this.banner = None;
                                             cx.notify();
-                                        },
-                                    )))
+                                        }),
+                                    ))
                             }))
                             .children(settings)
                             .when(showing_chat, |this| {
@@ -587,7 +589,7 @@ impl Desktop {
     ) -> Option<gpui::Stateful<Div>> {
         let (title, glyph, body) = if self.files.open {
             (
-                "文件",
+                tr("文件"),
                 icons::FOLDER_OPEN,
                 if self.files.collection.open {
                     self.session_files_element(cx)
@@ -596,7 +598,11 @@ impl Desktop {
                 },
             )
         } else if self.review.open {
-            ("审查变更", icons::BRANCH, self.review_element(window, cx))
+            (
+                tr("审查变更"),
+                icons::BRANCH,
+                self.review_element(window, cx),
+            )
         } else {
             return None;
         };
@@ -651,8 +657,9 @@ impl Desktop {
                                 .child(svg_symbol(glyph, 15., MUTED))
                                 .when(self.files.open, |bar| {
                                     bar.children(
-                                        [(true, "本次会话"), (false, "工作区")].into_iter().map(
-                                            |(collection, label)| {
+                                        [(true, tr("本次会话")), (false, tr("工作区"))]
+                                            .into_iter()
+                                            .map(|(collection, label)| {
                                                 control(label, label)
                                                     .when(
                                                         collection == self.files.collection.open,
@@ -671,8 +678,7 @@ impl Desktop {
                                                             cx.notify()
                                                         }
                                                     }))
-                                            },
-                                        ),
+                                            }),
                                     )
                                 })
                                 .child(
@@ -687,7 +693,7 @@ impl Desktop {
                                     icon_button(
                                         "close-workspace-popup",
                                         icons::TAB_CLOSE,
-                                        "关闭弹窗",
+                                        tr("关闭弹窗"),
                                     )
                                     .on_click(close),
                                 ),
@@ -716,14 +722,18 @@ impl Desktop {
         };
         let unread = self.unread_recent_count();
         let sidebar_label = if self.sidebar_open {
-            "隐藏会话侧栏"
+            tr("隐藏会话侧栏")
         } else {
-            "显示会话侧栏"
+            tr("显示会话侧栏")
         };
         let sidebar_tip: SharedString = if unread == 0 {
             sidebar_label.into()
         } else {
-            format!("{sidebar_label} · {unread} 个最近会话未读").into()
+            crate::i18n::format_text!(
+                "{sidebar_label} · {unread} 个最近会话未读",
+                "{sidebar_label} · {unread} unread recent conversation(s)"
+            )
+            .into()
         };
         let sidebar_icon = svg_symbol(icons::SIDEBAR_LEFT, 15., MUTED)
             .relative()
@@ -805,7 +815,7 @@ impl Desktop {
                         .border_b_2()
                         .border_color(rgb(ACCENT))
                         .text_size(px(13.))
-                        .child("远程网关"),
+                        .child(tr("远程网关")),
                 )
             })
             .when(!connecting, |bar| {
@@ -820,8 +830,8 @@ impl Desktop {
                     (window.viewport_size().width - px(leading + chrome_width)).max(px(0.));
                 bar.child(self.chat_tabs(available, window, cx)).child(
                     chrome("title-new", svg_symbol(icons::ADD, 15., MUTED))
-                        .aria_label("新建标签")
-                        .tooltip(|window, cx| Tooltip::new("新建标签").build(window, cx))
+                        .aria_label(tr("新建标签"))
+                        .tooltip(|window, cx| Tooltip::new(tr("新建标签")).build(window, cx))
                         .on_click(cx.listener(|this, _, window, cx| this.new_chat_tab(window, cx))),
                 )
             })
@@ -829,16 +839,16 @@ impl Desktop {
             .when(!connecting, |bar| {
                 bar.child(
                     chrome("title-files", svg_symbol(icons::FOLDER_OPEN, 16., MUTED))
-                        .aria_label("工作区文件")
+                        .aria_label(tr("工作区文件"))
                         .when(self.files.open, |button| button.bg(rgb(SELECTED)))
-                        .tooltip(|window, cx| Tooltip::new("工作区文件").build(window, cx))
+                        .tooltip(|window, cx| Tooltip::new(tr("工作区文件")).build(window, cx))
                         .on_click(cx.listener(|this, _, window, cx| this.toggle_files(window, cx))),
                 )
                 .child(
                     chrome("title-review", svg_symbol(icons::BRANCH, 15., MUTED))
-                        .aria_label("审查工作区变更")
+                        .aria_label(tr("审查工作区变更"))
                         .when(self.review.open, |button| button.bg(rgb(SELECTED)))
-                        .tooltip(|window, cx| Tooltip::new("审查工作区变更").build(window, cx))
+                        .tooltip(|window, cx| Tooltip::new(tr("审查工作区变更")).build(window, cx))
                         .on_click(
                             cx.listener(|this, _, window, cx| this.toggle_review(window, cx)),
                         ),
@@ -846,12 +856,12 @@ impl Desktop {
             })
             .child(
                 chrome("quick-open", svg_symbol(icons::SEARCH, 15., MUTED))
-                    .tooltip(|window, cx| Tooltip::new("快速打开").build(window, cx))
+                    .tooltip(|window, cx| Tooltip::new(tr("快速打开")).build(window, cx))
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_palette(window, cx))),
             )
             .child(
                 chrome("settings", svg_symbol(icons::SETTINGS, 15., MUTED))
-                    .tooltip(|window, cx| Tooltip::new("设置").build(window, cx))
+                    .tooltip(|window, cx| Tooltip::new(tr("设置")).build(window, cx))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_settings(window, cx);
                     })),
@@ -914,7 +924,7 @@ impl Desktop {
 
     fn status_bar(&self, cx: &mut Context<Self>) -> Div {
         let host = self.gateway.as_ref().map_or_else(
-            || "网关连接".to_owned(),
+            || tr("网关连接").to_owned(),
             |gateway| {
                 let host = gateway.url.host_str().unwrap_or_default();
                 if let Some(port) = gateway.url.port() {
@@ -930,10 +940,9 @@ impl Desktop {
             .and_then(|key| self.sessions.get(key))
             .map(|session| session.cwd.clone())
             .filter(|cwd| !cwd.is_empty());
-        let version = self
-            .gateway_version
-            .as_deref()
-            .map(|version| format!("后端 v{}", version.trim_start_matches('v')));
+        let version = self.gateway_version.as_deref().map(|version| {
+            crate::i18n::format_text!("后端 v{}", "Backend v{}", version.trim_start_matches('v'))
+        });
         div()
             .h(px(23.))
             .flex_none()
@@ -970,7 +979,7 @@ impl Desktop {
             .children(version.map(|label| status_item(icons::HASH, label, MUTED).max_w(px(180.))))
             .when(self.out.is_none() && self.gateway.is_some(), |this| {
                 this.child(
-                    status_item(icons::REFRESH, "重新连接", SECONDARY)
+                    status_item(icons::REFRESH, tr("重新连接"), SECONDARY)
                         .id("reconnect")
                         .flex_none()
                         .rounded(px(3.))
@@ -1044,9 +1053,9 @@ impl Desktop {
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(rgb(0x252b43))
                             .child(if login {
-                                "登录远程网关"
+                                tr("登录远程网关")
                             } else {
-                                "连接网关"
+                                tr("连接网关")
                             }),
                     ),
             )
@@ -1124,17 +1133,17 @@ impl Desktop {
                     .into_any_element();
             }
             let label = if self.out.is_none() {
-                "连接远程网关后开始会话"
+                tr("连接远程网关后开始会话")
             } else if self
                 .selected
                 .as_ref()
                 .is_some_and(|id| self.history_reads.contains_key(id))
             {
-                "正在读取历史…"
+                tr("正在读取历史…")
             } else if session.is_some_and(|session| session.loading) {
-                "正在恢复会话…"
+                tr("正在恢复会话…")
             } else {
-                "暂无消息"
+                tr("暂无消息")
             };
             return div()
                 .flex_1()
@@ -1319,7 +1328,7 @@ impl Desktop {
                                         message_icon_button(
                                             "branch-message",
                                             icons::FORK,
-                                            "在新对话中分支",
+                                            tr("在新对话中分支"),
                                         )
                                         .on_click(
                                             move |_, window, cx| {
@@ -1455,14 +1464,17 @@ impl Desktop {
             .child(Scrollbar::vertical(&self.list))
             .children(show_jump.then(|| {
                 let label = if messages_below > 0 {
-                    format!("{messages_below} 条消息")
+                    crate::i18n::format_text!(
+                        "{messages_below} 条消息",
+                        "{messages_below} message(s)"
+                    )
                 } else {
-                    "回到最新".to_owned()
+                    tr("回到最新").to_owned()
                 };
                 let accessible_label = if messages_below == 0 {
                     label.clone()
                 } else {
-                    format!("回到最新 · {label}")
+                    crate::i18n::format_text!("回到最新 · {label}", "Jump to latest · {label}")
                 };
                 div()
                     .absolute()
@@ -1571,7 +1583,7 @@ impl Desktop {
                 .text_color(rgb(CONVERSATION_INK))
                 .text_size(message_size)
                 .cursor_pointer()
-                .tooltip(|window, cx| Tooltip::new("回到这条提问").build(window, cx))
+                .tooltip(|window, cx| Tooltip::new(tr("回到这条提问")).build(window, cx))
                 .child(
                     div()
                         .min_w_0()
@@ -1684,29 +1696,31 @@ impl Desktop {
                     .text_size(px(12.))
                     .text_color(rgb(DANGER))
                     .child(div().flex_1().child(error))
-                    .child(control("reload-session", "重新读取").on_click(cx.listener(
-                        |this, _, _, cx| {
-                            if let Some(key) = this.selected.clone() {
-                                this.prefetch_history(&key, cx);
-                                this.attach(&key, true);
-                            }
-                            cx.notify();
-                        },
-                    ))),
+                    .child(
+                        control("reload-session", tr("重新读取")).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                if let Some(key) = this.selected.clone() {
+                                    this.prefetch_history(&key, cx);
+                                    this.attach(&key, true);
+                                }
+                                cx.notify();
+                            },
+                        )),
+                    ),
             );
         }
         if uncertain {
-            stack = stack.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .text_size(px(12.))
-                    .text_color(rgb(DANGER))
-                    .child(div().flex_1().child("上一条消息待确认"))
-                    .child(
-                        control("discard-uncertain", "解除待确认").on_click(cx.listener(
-                            |this, _, _, cx| {
+            stack =
+                stack.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .text_size(px(12.))
+                        .text_color(rgb(DANGER))
+                        .child(div().flex_1().child(tr("上一条消息待确认")))
+                        .child(control("discard-uncertain", tr("解除待确认")).on_click(
+                            cx.listener(|this, _, _, cx| {
                                 let key = this.key();
                                 if let Some(pending) =
                                     this.workspace_mut().pending_submissions.remove(&key)
@@ -1721,10 +1735,9 @@ impl Desktop {
                                 this.persist(cx);
                                 this.drain_followups(&key, cx);
                                 cx.notify();
-                            },
+                            }),
                         )),
-                    ),
-            );
+                );
         }
         let mut cards = div()
             .id("pending-cards")
@@ -1748,17 +1761,16 @@ impl Desktop {
                     .gap_2()
                     .text_size(px(12.))
                     .text_color(rgb(DANGER))
-                    .child("执行结果待确认")
+                    .child(tr("执行结果待确认"))
                     .child(div().flex_1().min_w_0().truncate().child(text))
                     .child(
-                        control(SharedString::from(format!("resolve-{id}")), "确认中断").on_click(
-                            cx.listener(move |this, _, _, cx| {
+                        control(SharedString::from(format!("resolve-{id}")), tr("确认中断"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
                                 if enabled {
                                     this.resolve_unknown(id.clone());
                                     cx.notify();
                                 }
-                            }),
-                        ),
+                            })),
                     ),
             );
         }
@@ -1821,7 +1833,10 @@ impl Desktop {
                             .hover(|button| button.bg(rgb(0xecf3ff)).border_color(rgb(0xc8daf6)))
                             .cursor_pointer()
                             .when(!self.media.is_open(), |button| {
-                                button.tooltip(format!("预览图片 · {name}"))
+                                button.tooltip(crate::i18n::format_text!(
+                                    "预览图片 · {name}",
+                                    "Preview image · {name}"
+                                ))
                             })
                             .child(
                                 div()
@@ -1898,17 +1913,17 @@ impl Desktop {
                     })
             }));
         let label = if stop_only {
-            "停止"
+            tr("停止")
         } else if pasting {
-            "正在粘贴图片"
+            tr("正在粘贴图片")
         } else if upload_in_progress {
-            "上传附件中"
+            tr("上传附件中")
         } else if self.creating() || loading {
-            "请稍候"
+            tr("请稍候")
         } else if queueing {
-            "加入队列"
+            tr("加入队列")
         } else {
-            "发送"
+            tr("发送")
         };
         let button = div()
             .id("send-stop")
@@ -1924,8 +1939,8 @@ impl Desktop {
                 button.cursor_pointer().hover(|style| style.bg(rgb(ACCENT)))
             })
             .tooltip(move |window, cx| {
-                Tooltip::new(if label == "发送" {
-                    "发送（Enter）"
+                Tooltip::new(if label == tr("发送") {
+                    tr("发送（Enter）")
                 } else {
                     label
                 })
@@ -2048,7 +2063,7 @@ impl Desktop {
             .gap(px(4.))
             .child(self.model_pills(enabled, cx))
             .children((running && can_queue).then(|| {
-                icon_button("stop-current-turn", icons::STOP, "停止当前回复")
+                icon_button("stop-current-turn", icons::STOP, tr("停止当前回复"))
                     .size(px(26.))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.stop();
@@ -2143,15 +2158,16 @@ impl Desktop {
         );
         if prompt.clarify {
             return card
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(rgb(MUTED))
-                        .child(format!("{} 个待回答问题", prompt.questions.len())),
-                )
+                .child(div().text_size(px(12.)).text_color(rgb(MUTED)).child(
+                    crate::i18n::format_text!(
+                        "{} 个待回答问题",
+                        "{} unanswered question(s)",
+                        prompt.questions.len()
+                    ),
+                ))
                 .child(
                     div().flex().justify_end().child(
-                        primary("open-clarify", "回答问题", enabled).on_click(
+                        primary("open-clarify", tr("回答问题"), enabled).on_click(
                             cx.listener(move |this, _, _, cx| this.show_questions(&key, cx)),
                         ),
                     ),
@@ -2163,10 +2179,10 @@ impl Desktop {
         let mut actions = div().flex().flex_wrap().gap_1();
         for (index, option) in prompt.choices.into_iter().enumerate() {
             let label: SharedString = match option.as_str() {
-                "once" => "允许一次".into(),
-                "session" => "本会话允许".into(),
-                "always" => "始终允许".into(),
-                "deny" => "拒绝".into(),
+                "once" => tr("允许一次").into(),
+                "session" => tr("本会话允许").into(),
+                "always" => tr("始终允许").into(),
+                "deny" => tr("拒绝").into(),
                 _ => option.clone().into(),
             };
             let key = key.clone();
@@ -2226,7 +2242,7 @@ fn new_chat_intro(width: gpui::Pixels, window: &Window) -> Div {
                 .text_size(px(13.))
                 .line_height(px(19.))
                 .text_color(rgb(MUTED))
-                .child("描述你的任务，或添加文件和图片。"),
+                .child(tr("描述你的任务，或添加文件和图片。")),
         )
 }
 
@@ -2315,10 +2331,11 @@ fn message_body(
             })
         });
     let media = images.strip(message.images(), user, desktop, cx);
-    let action =
-        message_icon_button("copy-message", icons::COPY, "复制消息").on_click(move |_, _, cx| {
+    let action = message_icon_button("copy-message", icons::COPY, tr("复制消息")).on_click(
+        move |_, _, cx| {
             cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
-        });
+        },
+    );
     let time = timestamp
         .and_then(|seconds| DateTime::<Utc>::from_timestamp(seconds, 0))
         .map(|at| at.with_timezone(&Local));
@@ -2337,7 +2354,7 @@ fn message_body(
         .invisible()
         .group_hover("message", |style| style.visible())
         .children(time.map(|at| {
-            let full = SharedString::from(at.format("%Y年%-m月%-d日 %H:%M:%S").to_string());
+            let full = SharedString::from(at.format(tr("%Y年%-m月%-d日 %H:%M:%S")).to_string());
             div()
                 .id("message-time")
                 .text_size(px(11.))
@@ -2369,15 +2386,15 @@ fn message_body(
                             13.,
                             MUTED,
                         ))
-                        .tooltip("更多操作")
+                        .tooltip(tr("更多操作"))
                         .dropdown_menu_with_anchor(gpui::Anchor::BottomRight, move |menu, _, _| {
                             let mark = mark.clone();
                             menu.item(tab_view::menu_item(
                                 &weak,
                                 if marked {
-                                    "取消收藏"
+                                    tr("取消收藏")
                                 } else {
-                                    "收藏消息"
+                                    tr("收藏消息")
                                 },
                                 icons::MODEL_STAR,
                                 true,
@@ -2525,7 +2542,7 @@ fn background_result_row(
                     )
                     .child(Scrollbar::vertical(&scroll))
                     .child(
-                        icon_button("copy-background-notice", icons::COPY, "复制通知原文")
+                        icon_button("copy-background-notice", icons::COPY, tr("复制通知原文"))
                             .absolute()
                             .top(px(6.))
                             .right(px(12.))
@@ -2552,10 +2569,10 @@ fn remote_file_card(
     let (saving, status) = state.conversation_download_status(&session, path);
     use super::workspace_files::DownloadStatus;
     let download_label = match status {
-        Some(DownloadStatus::Saved(_)) => "已保存",
-        Some(DownloadStatus::Failed(_)) => "重试下载",
-        _ if saving => "下载中",
-        _ => "下载",
+        Some(DownloadStatus::Saved(_)) => tr("已保存"),
+        Some(DownloadStatus::Failed(_)) => tr("重试下载"),
+        _ if saving => tr("下载中"),
+        _ => tr("下载"),
     };
     let download_tip = status.map(DownloadStatus::label);
     let path = path.to_owned();
@@ -2643,8 +2660,8 @@ fn remote_file_card(
                         }),
                 )
                 .child(
-                    attachment_action("preview-attachment", "打开预览")
-                        .child("打开预览")
+                    attachment_action("preview-attachment", tr("打开预览"))
+                        .child(tr("打开预览"))
                         .on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             let _ = preview_owner.update(cx, |this, cx| {
@@ -2954,7 +2971,7 @@ fn reasoning_row(
                         cx.notify();
                     });
                 })
-                .child("思考")
+                .child(tr("思考"))
                 .child(svg_symbol(
                     if expanded {
                         icons::CHEVRON_DOWN

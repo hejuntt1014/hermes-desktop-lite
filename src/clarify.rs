@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use gpui::{
@@ -195,9 +197,9 @@ impl Desktop {
                 let (selected, other) =
                     saved.map_or_else(Default::default, |saved| unpack_answer(question, saved));
                 let placeholder = if question.choices.is_empty() {
-                    "输入你的答案…"
+                    tr("输入你的答案…")
                 } else {
-                    "其他（输入你的答案）"
+                    tr("其他（输入你的答案）")
                 };
                 let field = cx.new(|cx| {
                     TextareaState::new(window, cx)
@@ -635,9 +637,13 @@ impl Desktop {
                         .text_size(px(11.))
                         .text_color(rgb(MUTED))
                         .child(if form.len() == 1 {
-                            "1 个问题".to_owned()
+                            tr("1 个问题").to_owned()
                         } else {
-                            format!("已回答 {answered} / {}", form.len())
+                            crate::i18n::format_text!(
+                                "已回答 {answered} / {}",
+                                "Answered {answered} of {}",
+                                form.len()
+                            )
                         })
                         .child(div().flex_1())
                         .child(symbol(icons::QUESTION, 15.)),
@@ -674,9 +680,9 @@ impl Desktop {
                                             .flex_none()
                                             .text_color(rgb(MUTED))
                                             .child(if question.multi {
-                                                "可多选"
+                                                tr("可多选")
                                             } else {
-                                                "选一个"
+                                                tr("选一个")
                                             })
                                     })),
                             )
@@ -731,7 +737,7 @@ impl Desktop {
                                                 div()
                                                     .text_size(px(11.))
                                                     .text_color(rgb(MUTED))
-                                                    .child("推荐")
+                                                    .child(tr("推荐"))
                                             })),
                                     )
                                     .on_click(cx.listener(move |this, _, window, cx| {
@@ -837,13 +843,13 @@ impl Desktop {
                                         .flex_1()
                                         .text_size(px(15.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .child("Hermes 想确认"),
+                                        .child(tr("Hermes 想确认")),
                                 )
                                 .child(
                                     Button::new("defer-clarify")
                                         .small()
                                         .ghost()
-                                        .label("稍后")
+                                        .label(tr("稍后"))
                                         .on_click(
                                             cx.listener(|this, _, _, cx| this.defer_questions(cx)),
                                         ),
@@ -855,7 +861,7 @@ impl Desktop {
                                 .px_4()
                                 .text_size(px(12.))
                                 .text_color(rgb(0xa43e37))
-                                .child("请至少回答一个问题。")
+                                .child(tr("请至少回答一个问题。"))
                         }))
                         .children(error.map(|error| {
                             div()
@@ -880,11 +886,11 @@ impl Desktop {
                                         .text_size(px(11.))
                                         .text_color(rgb(MUTED))
                                         .child(if navigating {
-                                            "↑ ↓ 移动 · Enter 选择"
+                                            tr("↑ ↓ 移动 · Enter 选择")
                                         } else if cfg!(target_os = "macos") {
-                                            "⌥ ↑ ↓ 切换问题 · ⌘ Enter 提交"
+                                            tr("⌥ ↑ ↓ 切换问题 · ⌘ Enter 提交")
                                         } else {
-                                            "Alt + ↑ ↓ 切换问题 · Ctrl + Enter 提交"
+                                            tr("Alt + ↑ ↓ 切换问题 · Ctrl + Enter 提交")
                                         }),
                                 )
                                 .child(
@@ -892,9 +898,9 @@ impl Desktop {
                                         .ghost()
                                         .small()
                                         .label(if form.len() == 1 {
-                                            "跳过"
+                                            tr("跳过")
                                         } else {
-                                            "跳过全部"
+                                            tr("跳过全部")
                                         })
                                         .disabled(busy)
                                         .on_click(cx.listener(|this, _, window, cx| {
@@ -907,9 +913,9 @@ impl Desktop {
                                         .small()
                                         .disabled(busy || answered == 0)
                                         .label(if busy {
-                                            "正在提交…"
+                                            tr("正在提交…")
                                         } else {
-                                            "确认并继续"
+                                            tr("确认并继续")
                                         })
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.submit_questions(false, window, cx)
@@ -978,10 +984,10 @@ pub(super) fn completed_questions(output: &str) -> Option<Div> {
         .as_array()
         .filter(|rows| !rows.is_empty())?;
     let unanswered = match result["outcome"].as_str() {
-        Some("cancelled") => "已跳过",
-        Some("timed_out") => "已超时",
-        Some("undelivered") => "未送达",
-        _ => "未回答",
+        Some("cancelled") => tr("已跳过"),
+        Some("timed_out") => tr("已超时"),
+        Some("undelivered") => tr("未送达"),
+        _ => tr("未回答"),
     };
     Some(
         div()
@@ -1012,7 +1018,7 @@ pub(super) fn completed_questions(output: &str) -> Option<Div> {
                     })
                     .filter(|text| !text.trim().is_empty());
                 let missing = if response["status"] == "skipped" {
-                    "已跳过"
+                    tr("已跳过")
                 } else {
                     unanswered
                 };

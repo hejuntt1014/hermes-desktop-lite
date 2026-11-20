@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::{HashMap, HashSet};
 
 use chrono::{Local, NaiveDate, Utc};
@@ -174,13 +176,13 @@ impl Desktop {
             let label = if self.out.is_none() {
                 ""
             } else if self.refreshing && !self.profiles.ready {
-                "正在读取会话…"
+                tr("正在读取会话…")
             } else if !self.query.is_empty() {
-                "没有匹配的会话"
+                tr("没有匹配的会话")
             } else if self.archived_only {
-                "暂无归档会话"
+                tr("暂无归档会话")
             } else {
-                "暂无会话"
+                tr("暂无会话")
             };
             return div().flex_1().min_h_0().px_4().pt_2().child(caption(label));
         }
@@ -237,18 +239,18 @@ impl Desktop {
                     .text_size(px(11.))
                     .line_height(px(16.))
                     .text_color(rgb(MUTED))
-                    .child("Shift + 单击置顶 · 拖动排序")
+                    .child(tr("Shift + 单击置顶 · 拖动排序"))
                     .into_any_element(),
                 Item::EmptySessions => div()
                     .px_2()
                     .py_1()
-                    .child(caption("暂无会话"))
+                    .child(caption(tr("暂无会话")))
                     .into_any_element(),
                 Item::More => {
                     let label = if desktop.refreshing {
-                        "正在读取会话…"
+                        tr("正在读取会话…")
                     } else {
-                        "加载更多"
+                        tr("加载更多")
                     };
                     let weak = entity.downgrade();
                     control("sidebar-more", label)
@@ -342,11 +344,11 @@ fn project(
         if !archived || searching {
             items.push(Item::Section {
                 label: if pinned {
-                    "已置顶"
+                    tr("已置顶")
                 } else if searching {
-                    "搜索结果"
+                    tr("搜索结果")
                 } else {
-                    "会话"
+                    tr("会话")
                 },
                 pinned,
             });

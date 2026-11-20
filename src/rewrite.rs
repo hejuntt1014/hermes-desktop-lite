@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::HashSet;
 
 use anyhow::{Context as _, Result, bail};
@@ -291,7 +293,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         let Some(wire_text) = rewrite_text(caption, &target.attachments) else {
-            self.banner = Some("附件路径不可用，无法重新发送这条消息".into());
+            self.banner = Some(tr("附件路径不可用，无法重新发送这条消息").into());
             cx.notify();
             return;
         };
@@ -326,7 +328,13 @@ impl Desktop {
 
     fn save_rewrite(&mut self, cx: &mut Context<Self>) -> bool {
         if let Err(error) = self.settings.save() {
-            self.banner = Some(format!("无法保存待发消息 · {error}").into());
+            self.banner = Some(
+                crate::i18n::format_text!(
+                    "无法保存待发消息 · {error}",
+                    "Could not save the pending message · {error}"
+                )
+                .into(),
+            );
             cx.notify();
             return false;
         }
@@ -378,7 +386,7 @@ impl Desktop {
         };
         let profile = session.profile.clone();
         let Some(pictures) = self.rewrite_pictures(key, &saved) else {
-            self.keep_rewrite_for_review(key, "原消息已更新，无法重新读取原图".into(), cx);
+            self.keep_rewrite_for_review(key, tr("原消息已更新，无法重新读取原图").into(), cx);
             return;
         };
         let session = self.sessions.get_mut(key).unwrap();
@@ -391,7 +399,10 @@ impl Desktop {
             async move { prepare_pictures(gateway, &key, &profile, pictures, canonical).await }
         });
         cx.spawn(async move |handle, cx| {
-            let result = job.await.context("读取原图失败").and_then(|result| result);
+            let result = job
+                .await
+                .context(tr("读取原图失败"))
+                .and_then(|result| result);
             let _ = handle.update(cx, |this, cx| {
                 if !this
                     .out
@@ -415,14 +426,21 @@ impl Desktop {
                     return;
                 }
                 if this.rewrite_pictures(&key, &saved).is_none() {
-                    this.keep_rewrite_for_review(&key, "原消息已更新，无法重发这组图片".into(), cx);
+                    this.keep_rewrite_for_review(
+                        &key,
+                        tr("原消息已更新，无法重发这组图片").into(),
+                        cx,
+                    );
                     return;
                 }
                 let result = match result {
                     Ok(result) => result,
                     Err(error) => {
                         this.sessions.get_mut(&key).unwrap().error =
-                            Some(format!("无法准备原图 · {error}"));
+                            Some(crate::i18n::format_text!(
+                                "无法准备原图 · {error}",
+                                "Could not prepare the original image · {error}"
+                            ));
                         cx.notify();
                         return;
                     }
@@ -557,7 +575,7 @@ impl Desktop {
     fn mark_rewrite_uncertain(&mut self, key: &str, phase: RewritePhase) {
         if let Some(session) = self.sessions.get_mut(key) {
             session.submitting = false;
-            session.error = Some("未收到会话更新确认".into());
+            session.error = Some(tr("未收到会话更新确认").into());
         }
         if phase == RewritePhase::Legacy {
             if let Some(saved) = self.workspace_mut().pending_rewrites.get_mut(key) {
@@ -711,20 +729,20 @@ impl Desktop {
                 .bg(rgb(0xf3f6fc))
                 .text_size(px(12.))
                 .child(div().flex_1().min_w_0().child(if working && staging {
-                    "正在读取原图…"
+                    tr("正在读取原图…")
                 } else if working {
-                    "正在更新会话…"
+                    tr("正在更新会话…")
                 } else if saved.phase == RewritePhase::Send {
-                    "待发送的替换消息"
+                    tr("待发送的替换消息")
                 } else {
-                    "会话更新待确认"
+                    tr("会话更新待确认")
                 }))
                 .when(!working, |bar| {
                     bar.child(
                         Button::new("copy-rewrite-text")
                             .ghost()
                             .small()
-                            .label("复制内容")
+                            .label(tr("复制内容"))
                             .on_click(move |_, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(text.clone()))
                             }),
@@ -733,7 +751,7 @@ impl Desktop {
                         bar.child(
                             Button::new("continue-rewrite")
                                 .small()
-                                .label("继续")
+                                .label(tr("继续"))
                                 .disabled(!ready)
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.continue_rewrite(&session, cx)
@@ -744,7 +762,7 @@ impl Desktop {
                         Button::new("dismiss-rewrite")
                             .ghost()
                             .small()
-                            .label("放弃待发内容")
+                            .label(tr("放弃待发内容"))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.workspace_mut().pending_rewrites.remove(&dismiss);
                                 this.persist(cx);
@@ -806,9 +824,9 @@ impl Desktop {
                                 .text_size(px(15.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .child(if missing_edit {
-                                    "原消息暂不可见"
+                                    tr("原消息暂不可见")
                                 } else {
-                                    "重新生成答复"
+                                    tr("重新生成答复")
                                 }),
                         )
                         .children(missing_edit.then(|| Textarea::new(&editor.input).small()))
@@ -821,7 +839,7 @@ impl Desktop {
                                 .bg(rgb(0xf4f6fa))
                                 .rounded(px(4.))
                                 .child(if editor.target.caption.is_empty() {
-                                    "图片消息".to_owned()
+                                    tr("图片消息").to_owned()
                                 } else {
                                     editor.target.caption.clone()
                                 })
@@ -830,15 +848,15 @@ impl Desktop {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(0x9a562b))
-                                .child(format!(
-                                    "继续后，这条消息及之后的 {count} 轮对话会从当前会话移除。"
+                                .child(crate::i18n::format_text!(
+                                    "继续后，这条消息及之后的 {count} 轮对话会从当前会话移除。", "Continuing will remove this message and the next {count} turn(s) from this conversation."
                                 ))
                         }))
                         .children((editor.stale || missing_edit).then(|| {
                             div()
                                 .text_size(px(12.))
                                 .text_color(rgb(0xa44c35))
-                                .child("会话已更新。可以复制编辑内容，再重新打开这条消息。")
+                                .child(tr("会话已更新。可以复制编辑内容，再重新打开这条消息。"))
                         }))
                         .child(
                             div()
@@ -851,14 +869,14 @@ impl Desktop {
                                             .flex_1()
                                             .text_size(px(11.))
                                             .text_color(rgb(MUTED))
-                                            .child(format!("保留 {attachment_count} 个附件")),
+                                            .child(crate::i18n::format_text!("保留 {attachment_count} 个附件", "Keep {attachment_count} attachment(s)")),
                                     )
                                 })
                                 .child(
                                     Button::new("close-rewrite")
                                         .ghost()
                                         .small()
-                                        .label("取消")
+                                        .label(tr("取消"))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.close_rewrite(window, cx)
                                         })),
@@ -868,7 +886,7 @@ impl Desktop {
                                         .primary()
                                         .small()
                                         .disabled(editor.stale)
-                                        .label("重新生成")
+                                        .label(tr("重新生成"))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.confirm_rewrite(window, cx)
                                         }))
@@ -929,7 +947,7 @@ impl Desktop {
                                 .compact()
                                 .size(px(25.))
                                 .p_0()
-                                .tooltip("取消编辑 · Esc")
+                                .tooltip(tr("取消编辑 · Esc"))
                                 .child(svg_symbol(crate::icons::TAB_CLOSE, 13., MUTED))
                                 .on_click(move |_, window, app| {
                                     let _ = close
@@ -944,9 +962,9 @@ impl Desktop {
                                 .p_0()
                                 .disabled(!confirm)
                                 .tooltip(if cfg!(target_os = "macos") {
-                                    "保存并重发 · ⌘+Enter"
+                                    tr("保存并重发 · ⌘+Enter")
                                 } else {
-                                    "保存并重发 · Ctrl+Enter"
+                                    tr("保存并重发 · Ctrl+Enter")
                                 })
                                 .child(svg_symbol(
                                     crate::icons::ARROW_UP,
@@ -964,8 +982,9 @@ impl Desktop {
                         .text_size(px(11.))
                         .line_height(px(16.))
                         .text_color(rgb(0x9a562b))
-                        .child(format!(
-                            "重发后，此消息之后的 {later} 轮对话将从当前会话移除。"
+                        .child(crate::i18n::format_text!(
+                            "重发后，此消息之后的 {later} 轮对话将从当前会话移除。",
+                            "Resending will remove the {later} turn(s) that follow this message."
                         ))
                 }))
                 .children(editor.stale.then(|| {
@@ -973,7 +992,7 @@ impl Desktop {
                         .text_size(px(11.))
                         .line_height(px(16.))
                         .text_color(rgb(0xa44c35))
-                        .child("会话已更新。可以复制编辑内容，再重新打开这条消息。")
+                        .child(tr("会话已更新。可以复制编辑内容，再重新打开这条消息。"))
                 }))
                 .into_any_element(),
         )
@@ -995,25 +1014,29 @@ async fn prepare_pictures(
         let name = picture.name.clone();
         let image = prepare_replay_image(&gateway, session, profile, picture)
             .await
-            .with_context(|| format!("读取 {name} 失败"))?;
+            .with_context(|| {
+                crate::i18n::format_text!("读取 {name} 失败", "Could not read {name}")
+            })?;
         if !digests.insert(image.digest) {
             continue;
         }
         if digests.len() > 10 {
-            bail!("一次最多重新发送 10 张图片");
+            bail!(tr("一次最多重新发送 10 张图片"));
         }
         if !canonical {
             total += image.data_url.len();
             if total > 32 * 1024 * 1024 {
-                bail!("这组图片超过网关可接收的数据大小");
+                bail!(tr("这组图片超过网关可接收的数据大小"));
             }
         }
         let filename = format!("image-{}.{}", digests.len(), image.extension);
         let uploaded = upload_chat_image(&gateway, profile, &filename, &image.data_url)
             .await
-            .with_context(|| format!("暂存 {name} 失败"))?;
+            .with_context(|| {
+                crate::i18n::format_text!("暂存 {name} 失败", "Could not stage {name}")
+            })?;
         let reference =
-            attachment_ref("@image:", &uploaded.path).context("网关未返回可用的原图路径")?;
+            attachment_ref("@image:", &uploaded.path).context(tr("网关未返回可用的原图路径"))?;
         if canonical {
             staged.push(uploaded);
         } else {

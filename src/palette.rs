@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
@@ -78,7 +80,7 @@ impl Entry {
         match self {
             Self::Bookmark(mark) => mark.excerpt.clone().into(),
             Self::Command(_, name) => (*name).into(),
-            Self::Tab(tab) => tab.title.clone().into(),
+            Self::Tab(tab) => tab.display_title().to_owned().into(),
             Self::Session(row, _) => row.title.clone(),
         }
     }
@@ -248,7 +250,7 @@ impl Desktop {
                             results.iter().filter_map(Summary::from_wire).collect();
                     }
                 } else if search {
-                    this.palette.error = Some("网关搜索暂不可用".into());
+                    this.palette.error = Some(tr("网关搜索暂不可用").into());
                 }
                 this.refresh_palette(true, cx);
             });
@@ -274,35 +276,35 @@ impl Desktop {
         let can_chat = self.gateway.is_some() && !self.settings_open;
         let mut commands = Vec::new();
         for (available, command, name, alias) in [
-            (can_chat, Command::New, "新建会话", "new chat"),
-            (true, Command::Settings, "网关设置", "settings gateway"),
-            (can_chat, Command::Files, "工作区文件", "files explorer"),
+            (can_chat, Command::New, tr("新建会话"), "new chat"),
+            (true, Command::Settings, tr("网关设置"), "settings gateway"),
+            (can_chat, Command::Files, tr("工作区文件"), "files explorer"),
             (
                 can_chat,
                 Command::Review,
-                "审查 Git 变更",
+                tr("审查 Git 变更"),
                 "git review diff",
             ),
             (
                 can_chat && self.selected.is_some(),
                 Command::Find,
-                "在会话内查找",
+                tr("在会话内查找"),
                 "find in chat",
             ),
             (
                 can_chat,
                 Command::Sidebar,
                 if self.sidebar_open {
-                    "隐藏会话侧栏"
+                    tr("隐藏会话侧栏")
                 } else {
-                    "显示会话侧栏"
+                    tr("显示会话侧栏")
                 },
                 "sidebar",
             ),
             (
                 can_chat && workspace.is_some_and(|workspace| !workspace.closed_tabs.is_empty()),
                 Command::Reopen,
-                "重新打开已关闭的标签",
+                tr("重新打开已关闭的标签"),
                 "reopen closed tab",
             ),
         ] {
@@ -327,7 +329,7 @@ impl Desktop {
         let matching_tabs = tabs
             .iter()
             .filter(|tab| {
-                matches(&tab.title)
+                matches(tab.display_title())
                     || tab
                         .session
                         .as_deref()
@@ -336,15 +338,15 @@ impl Desktop {
             .cloned()
             .map(Entry::Tab);
         if query.is_empty() {
-            append(&mut rows, "前往", std::mem::take(&mut commands));
-            append(&mut rows, "已打开", matching_tabs);
+            append(&mut rows, tr("前往"), std::mem::take(&mut commands));
+            append(&mut rows, tr("已打开"), matching_tabs);
         } else {
-            append(&mut rows, "已打开", matching_tabs);
+            append(&mut rows, tr("已打开"), matching_tabs);
         }
         if let Some(ws) = workspace {
             append(
                 &mut rows,
-                "收藏的消息",
+                tr("收藏的消息"),
                 ws.bookmarks
                     .iter()
                     .rev()
@@ -352,7 +354,7 @@ impl Desktop {
                         b.profile == self.active_profile()
                             && (matches(&b.excerpt)
                                 || matches(&b.title)
-                                || matches("收藏 书签 bookmarks"))
+                                || matches(tr("收藏 书签 bookmarks")))
                     })
                     .cloned()
                     .map(Entry::Bookmark),
@@ -385,14 +387,14 @@ impl Desktop {
         append(
             &mut rows,
             if query.is_empty() {
-                "最近会话"
+                tr("最近会话")
             } else {
-                "历史会话"
+                tr("历史会话")
             },
             history.into_iter().chain(remaining),
         );
         if !query.is_empty() {
-            append(&mut rows, "前往", commands);
+            append(&mut rows, tr("前往"), commands);
         }
         self.palette.rows = rows;
         let selected = if retain_selection {
@@ -535,10 +537,10 @@ impl Desktop {
                 let active = desktop.palette.active == Some(index);
                 let title = entry.title();
                 let (glyph, suffix, secondary) = match entry {
-                    Entry::Bookmark(mark) => ("☆", "收藏", mark.title.clone().into()),
+                    Entry::Bookmark(mark) => ("☆", tr("收藏"), mark.title.clone().into()),
                     Entry::Command(command, _) => (command.glyph(), command.shortcut(), "".into()),
-                    Entry::Tab(tab) => ("", if tab.session.is_none() { "草稿" } else { "" }, "".into()),
-                    Entry::Session(summary, snippet) => ("", if summary.archived { "已归档" } else { "" }, snippet.clone())
+                    Entry::Tab(tab) => ("", if tab.session.is_none() { tr("草稿") } else { "" }, "".into()),
+                    Entry::Session(summary, snippet) => ("", if summary.archived { tr("已归档") } else { "" }, snippet.clone())
                 };
                 let current = matches!(entry, Entry::Tab(tab) if desktop.workspace().and_then(|workspace| workspace.active_tab.as_deref()) == Some(&tab.id));
                 let weak = entity.downgrade();
@@ -562,11 +564,11 @@ impl Desktop {
         }).w_full().h(px(height)).track_scroll(&self.palette.scroll);
         let status: Option<SharedString> =
             if !self.palette.query.is_empty() && self.palette.task.is_some() {
-                Some("正在搜索历史会话…".into())
+                Some(tr("正在搜索历史会话…").into())
             } else if let Some(error) = &self.palette.error {
                 Some(error.clone())
             } else if self.palette.active.is_none() {
-                Some("没有匹配的会话或操作".into())
+                Some(tr("没有匹配的会话或操作").into())
             } else {
                 None
             };

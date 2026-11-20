@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::sync::LazyLock;
 
 use gpui::SharedString;
@@ -98,11 +100,14 @@ impl BackgroundNotice {
             .collect::<Vec<_>>()
             .join("\n\n");
         let label = if process {
-            "后台进程已完成".to_owned()
+            tr("后台进程已完成").to_owned()
         } else if tasks > 1 {
-            format!("后台委派已完成 · {tasks} 项结果")
+            crate::i18n::format_text!(
+                "后台委派已完成 · {tasks} 项结果",
+                "Delegation finished · {tasks} result(s)"
+            )
         } else {
-            "后台委派已完成".to_owned()
+            tr("后台委派已完成").to_owned()
         };
         Some(Self {
             raw: raw.to_owned().into(),

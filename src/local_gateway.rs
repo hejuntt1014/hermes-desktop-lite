@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{env, path::PathBuf, process::Stdio, time::Duration};
 
 use anyhow::{Context, Result, bail};
@@ -30,7 +32,11 @@ struct Endpoint {
 
 impl Endpoint {
     fn parse(value: &Value) -> Result<Self> {
-        let origin = Url::parse(value["api_origin"].as_str().context("本地网关缺少地址")?)?;
+        let origin = Url::parse(
+            value["api_origin"]
+                .as_str()
+                .context(tr("本地网关缺少地址"))?,
+        )?;
         let loopback = match origin.host() {
             Some(Host::Ipv4(ip)) => ip.is_loopback(),
             Some(Host::Ipv6(ip)) => ip.is_loopback(),
@@ -51,12 +57,12 @@ impl Endpoint {
                     .any(|capability| capability == "session-authority-v1")
             })
         {
-            bail!("本地网关返回了不兼容的连接地址");
+            bail!(tr("本地网关返回了不兼容的连接地址"));
         }
         let instance_id = value["instance_id"]
             .as_str()
             .filter(|id| !id.is_empty())
-            .context("本地网关缺少实例标识")?
+            .context(tr("本地网关缺少实例标识"))?
             .to_owned();
         Ok(Self {
             origin,
@@ -67,7 +73,8 @@ impl Endpoint {
 
 impl LocalTickets {
     pub async fn connect() -> Result<Gateway> {
-        let executable = hermes_command().context("找不到 Hermes Agent。安装后可从本地网关连接")?;
+        let executable =
+            hermes_command().context(tr("找不到 Hermes Agent。安装后可从本地网关连接"))?;
         let output = timeout(
             Duration::from_secs(72),
             cli(&executable)
@@ -75,15 +82,18 @@ impl LocalTickets {
                 .output(),
         )
         .await
-        .context("等待本地网关就绪超时")??;
+        .context(tr("等待本地网关就绪超时"))??;
         let reply: Value = serde_json::from_slice(&output.stdout)
-            .context("本地 Hermes CLI 未返回网关信息，请更新 Hermes Agent")?;
+            .context(tr("本地 Hermes CLI 未返回网关信息，请更新 Hermes Agent"))?;
         if !output.status.success() || reply["state"] != "ready" {
             let reason = reply["reason_code"]
                 .as_str()
                 .filter(|reason| !reason.is_empty())
-                .unwrap_or("未就绪");
-            bail!("本地网关未就绪（{reason}）");
+                .unwrap_or(tr("未就绪"));
+            bail!(crate::i18n::format_text!(
+                "本地网关未就绪（{reason}）",
+                "The local gateway is not ready ({reason})"
+            ));
         }
         let endpoint = Endpoint::parse(&reply["endpoint"])?;
         let broker = Broker::open(&executable, &endpoint).await?;
@@ -105,13 +115,16 @@ impl LocalTickets {
         };
         let reply = timeout(BROKER_TIMEOUT, broker.request(purpose, profile))
             .await
-            .context("本地网关票据等待超时")??;
+            .context(tr("本地网关票据等待超时"))??;
         *slot = Some(broker);
         if reply["ok"] != true {
             let code = reply["error"]["code"]
                 .as_str()
                 .unwrap_or("ticket_unavailable");
-            bail!("本地网关无法签发票据（{code}）");
+            bail!(crate::i18n::format_text!(
+                "本地网关无法签发票据（{code}）",
+                "The local gateway could not issue a ticket ({code})"
+            ));
         }
         reply["ticket"]
             .as_str()
@@ -122,7 +135,7 @@ impl LocalTickets {
                         .all(|byte| byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte))
             })
             .map(str::to_owned)
-            .context("本地网关未返回有效票据")
+            .context(tr("本地网关未返回有效票据"))
     }
 
     pub async fn socket_protocols(&self) -> Result<String> {
@@ -144,17 +157,17 @@ impl Broker {
             .args(["gateway", "tickets", "--serve", "--json"])
             .stdin(Stdio::piped())
             .spawn()
-            .context("无法启动本地票据通道")?;
-        let input = child.stdin.take().context("无法打开本地票据输入")?;
-        let mut output = BufReader::new(child.stdout.take().context("无法打开本地票据输出")?);
+            .context(tr("无法启动本地票据通道"))?;
+        let input = child.stdin.take().context(tr("无法打开本地票据输入"))?;
+        let mut output = BufReader::new(child.stdout.take().context(tr("无法打开本地票据输出"))?);
         let hello = timeout(BROKER_TIMEOUT, read_message(&mut output))
             .await
-            .context("等待本地票据通道超时")??;
+            .context(tr("等待本地票据通道超时"))??;
         if hello["type"] != "hello"
             || hello["protocol"] != 1
             || Endpoint::parse(&hello["endpoint"])? != *expected
         {
-            bail!("本地网关实例已变化，请重新连接");
+            bail!(tr("本地网关实例已变化，请重新连接"));
         }
         Ok(Self {
             _child: child,
@@ -177,7 +190,7 @@ impl Broker {
         self.input.flush().await?;
         let reply = read_message(&mut self.output).await?;
         if reply["id"] != id {
-            bail!("本地票据响应与请求不匹配");
+            bail!(tr("本地票据响应与请求不匹配"));
         }
         Ok(reply)
     }
@@ -190,9 +203,9 @@ async fn read_message(output: &mut BufReader<ChildStdout>) -> Result<Value> {
         .read_until(b'\n', &mut line)
         .await?;
     if line.len() as u64 > WIRE_LIMIT || !line.ends_with(b"\n") {
-        bail!("本地票据通道已关闭或返回无效响应");
+        bail!(tr("本地票据通道已关闭或返回无效响应"));
     }
-    serde_json::from_slice(&line).context("本地票据通道返回无效响应")
+    serde_json::from_slice(&line).context(tr("本地票据通道返回无效响应"))
 }
 
 fn cli(executable: &PathBuf) -> Command {

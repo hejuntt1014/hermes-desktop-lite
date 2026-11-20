@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     Context, Div, EntityInputHandler, FocusHandle, Stateful, Window, div, prelude::*, px, rgb, rgba,
 };
@@ -204,14 +206,18 @@ impl Desktop {
                                         .text_size(px(15.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(rgb(INK))
-                                        .child("重命名会话"),
+                                        .child(tr("重命名会话")),
                                 )
                                 .child(
-                                    icon_button("close-session-dialog", icons::TAB_CLOSE, "关闭")
-                                        .size(px(23.))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.close_session_dialog(window, cx)
-                                        })),
+                                    icon_button(
+                                        "close-session-dialog",
+                                        icons::TAB_CLOSE,
+                                        tr("关闭"),
+                                    )
+                                    .size(px(23.))
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| this.close_session_dialog(window, cx),
+                                    )),
                                 ),
                         )
                         .child(self.rename_dialog(dialog, cx)),
@@ -243,13 +249,17 @@ impl Desktop {
                     .justify_end()
                     .items_center()
                     .gap_2()
-                    .child(control("cancel-rename", "取消").on_click(
+                    .child(control("cancel-rename", tr("取消")).on_click(
                         cx.listener(|this, _, window, cx| this.close_session_dialog(window, cx)),
                     ))
                     .child(
                         primary(
                             "save-title",
-                            if waiting { "保存中…" } else { "保存" },
+                            if waiting {
+                                tr("保存中…")
+                            } else {
+                                tr("保存")
+                            },
                             enabled,
                         )
                         .on_click(

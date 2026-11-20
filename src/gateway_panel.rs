@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use anyhow::{Result, bail};
 use gpui::{
     Anchor, AnyElement, Context, Div, FontWeight, IntoElement, SharedString, Task, Window, div,
@@ -120,7 +122,7 @@ impl Desktop {
         store: bool,
     ) -> Result<Gateway> {
         if address.trim().is_empty() {
-            bail!("请输入远程网关地址");
+            bail!(tr("请输入远程网关地址"));
         }
         let url = Gateway::normalize_address(address)?;
         let token = if auth == RemoteAuth::Token {
@@ -133,7 +135,7 @@ impl Desktop {
             String::new()
         };
         if auth == RemoteAuth::Token && token.is_empty() {
-            bail!("请输入此地址的访问令牌");
+            bail!(tr("请输入此地址的访问令牌"));
         }
         let target = Gateway::new(url.as_str(), auth, token.clone())?;
         if store && auth == RemoteAuth::Token && !typed.trim().is_empty() {
@@ -174,15 +176,19 @@ impl Desktop {
                 match result {
                     Ok(Ok(version)) => {
                         let label = version.map_or_else(
-                            || "连接与认证通过".to_owned(),
+                            || tr("连接与认证通过").to_owned(),
                             |version| {
-                                format!("连接与认证通过 · v{}", version.trim_start_matches('v'))
+                                crate::i18n::format_text!(
+                                    "连接与认证通过 · v{}",
+                                    "Connection and authentication successful · v{}",
+                                    version.trim_start_matches('v')
+                                )
                             },
                         );
                         this.gateway_panel.feedback = Some(label.into());
                     }
                     Ok(Err(error)) => this.show_connection_error(error.to_string(), cx),
-                    Err(_) => this.show_connection_error("无法完成远程连接测试".into(), cx),
+                    Err(_) => this.show_connection_error(tr("无法完成远程连接测试").into(), cx),
                 }
                 cx.notify();
             });
@@ -230,7 +236,7 @@ impl Desktop {
             let _ = view.update_in(cx, |this, window, cx| {
                 this.gateway_panel.job = None;
                 if this.out.is_none() {
-                    this.status = "未连接".into();
+                    this.status = "未连接";
                 }
                 match result {
                     Ok(Ok(target)) => {
@@ -244,13 +250,13 @@ impl Desktop {
                         this.activate_gateway(target, window, cx);
                     }
                     Ok(Err(error)) => this.show_connection_error(error.to_string(), cx),
-                    Err(_) => this.show_connection_error("无法准备本地网关".into(), cx),
+                    Err(_) => this.show_connection_error(tr("无法准备本地网关").into(), cx),
                 }
                 cx.notify();
             });
         }));
         if self.out.is_none() {
-            self.status = "正在准备本地网关".into();
+            self.status = "正在准备本地网关";
         }
         cx.notify();
     }
@@ -345,7 +351,7 @@ impl Desktop {
                         this.activate_gateway(gateway, window, cx);
                     }
                     Ok(Err(error)) => this.show_connection_error(error.to_string(), cx),
-                    Err(_) => this.show_connection_error("无法退出本机登录".into(), cx),
+                    Err(_) => this.show_connection_error(tr("无法退出本机登录").into(), cx),
                 }
                 cx.notify();
             });
@@ -366,9 +372,9 @@ impl Desktop {
                         .text_size(px(13.))
                         .line_height(px(21.))
                         .text_color(rgb(0x66718b))
-                        .child(
+                        .child(tr(
                             "在浏览器中使用网关用户名和密码登录。登录完成后，客户端会自动连接。",
-                        ),
+                        )),
                 )
                 .child(
                     div()
@@ -381,7 +387,7 @@ impl Desktop {
                                 .h(px(38.))
                                 .px_3()
                                 .rounded(px(7.))
-                                .aria_label("在浏览器中登录")
+                                .aria_label(tr("在浏览器中登录"))
                                 .flex()
                                 .flex_none()
                                 .items_center()
@@ -392,38 +398,38 @@ impl Desktop {
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
                                 .hover(|button| button.bg(rgb(0x344998)))
-                                .child("在浏览器中登录")
+                                .child(tr("在浏览器中登录"))
                                 .child(svg_symbol(icons::LINK_EXTERNAL, 13., 0xf0f2ff))
                                 .on_click(move |_, _, cx| cx.open_url(&url)),
                         )
                         .child(
-                            control("gateway-cancel-login", "返回")
+                            control("gateway-cancel-login", tr("返回"))
                                 .h(px(38.))
                                 .px_3()
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.connection = None;
                                     this.gateway = None;
                                     this.login_url = None;
-                                    this.status = "未连接".into();
+                                    this.status = "未连接";
                                     cx.notify();
                                 })),
                         ),
                 );
         }
-        form = form.child(heading("连接模式")).child(
+        form = form.child(heading(tr("连接模式"))).child(
             div().flex().gap_2().children(
                 [
                     (
                         GatewayMode::Local,
-                        LOCAL_LABEL,
+                        tr(LOCAL_LABEL),
                         icons::DESKTOP,
-                        "连接本机安装的 Hermes Agent",
+                        tr("连接本机安装的 Hermes Agent"),
                     ),
                     (
                         GatewayMode::Remote,
-                        REMOTE_LABEL,
+                        tr(REMOTE_LABEL),
                         icons::WORLD,
-                        "连接已部署的 Hermes 网关",
+                        tr("连接已部署的 Hermes 网关"),
                     ),
                 ]
                 .into_iter()
@@ -481,18 +487,18 @@ impl Desktop {
                         })
                     });
             form = form
-                .child(field("远程 URL", Input::new(&self.address)))
+                .child(field(tr("远程 URL"), Input::new(&self.address)))
                 .child(
                     div()
                         .flex()
                         .flex_col()
                         .gap_1()
-                        .child(heading("认证方式"))
+                        .child(heading(tr("认证方式")))
                         .child(
                             div().flex().gap_1().children(
                                 [
-                                    (RemoteAuth::Password, "用户名和密码"),
-                                    (RemoteAuth::Token, "访问令牌"),
+                                    (RemoteAuth::Password, tr("用户名和密码")),
+                                    (RemoteAuth::Token, tr("访问令牌")),
                                 ]
                                 .into_iter()
                                 .enumerate()
@@ -511,8 +517,8 @@ impl Desktop {
                         ),
                 )
                 .when(auth == RemoteAuth::Token, |form| {
-                    form.child(field("访问令牌", Input::new(&self.token)))
-                        .child(note("留空时沿用此 URL 已保存的令牌。"))
+                    form.child(field(tr("访问令牌"), Input::new(&self.token)))
+                        .child(note(tr("留空时沿用此 URL 已保存的令牌。")))
                 })
                 .when(auth == RemoteAuth::Password, |form| {
                     if signed_in {
@@ -521,15 +527,15 @@ impl Desktop {
                                 .flex()
                                 .items_center()
                                 .gap_2()
-                                .child(note("已登录 · 会话自动续期"))
-                                .child(control("gateway-sign-out", "退出本机登录").on_click(
+                                .child(note(tr("已登录 · 会话自动续期")))
+                                .child(control("gateway-sign-out", tr("退出本机登录")).on_click(
                                     cx.listener(|this, _, window, cx| {
                                         this.sign_out_remote(window, cx)
                                     }),
                                 )),
                         )
                     } else {
-                        form.child(note("连接后在浏览器完成登录。"))
+                        form.child(note(tr("连接后在浏览器完成登录。")))
                     }
                 });
         }
@@ -544,9 +550,9 @@ impl Desktop {
                         control(
                             "gateway-test",
                             if self.gateway_panel.probing {
-                                "正在测试"
+                                tr("正在测试")
                             } else {
-                                "测试远程"
+                                tr("测试远程")
                             },
                         )
                         .when(busy, |button| button.opacity(0.55))
@@ -562,11 +568,11 @@ impl Desktop {
                     primary(
                         "save-gateway",
                         if busy && mode == GatewayMode::Local {
-                            "正在准备…"
+                            tr("正在准备…")
                         } else if compact {
-                            "保存并重连"
+                            tr("保存并重连")
                         } else {
-                            "连接网关"
+                            tr("连接网关")
                         },
                         !busy,
                     )
@@ -592,9 +598,9 @@ impl Desktop {
         let remote_host = Gateway::normalize_address(&self.settings.address)
             .ok()
             .filter(|_| !self.settings.address.is_empty())
-            .map_or_else(|| REMOTE_LABEL.to_owned(), |url| display_host(&url));
+            .map_or_else(|| tr(REMOTE_LABEL).to_owned(), |url| display_host(&url));
         let label = if mode == GatewayMode::Local {
-            "本机".to_owned()
+            tr("本机").to_owned()
         } else {
             host
         };
@@ -622,7 +628,7 @@ impl Desktop {
                     .gap_1()
                     .children(
                         [
-                            (GatewayMode::Local, "本机".to_owned(), icons::DESKTOP),
+                            (GatewayMode::Local, tr("本机").to_owned(), icons::DESKTOP),
                             (GatewayMode::Remote, remote_host.clone(), icons::WORLD),
                         ]
                         .into_iter()
@@ -646,7 +652,7 @@ impl Desktop {
                             gateway_menu_row(
                                 "open-gateway-settings",
                                 icons::SETTINGS,
-                                "管理网关…",
+                                tr("管理网关…"),
                                 false,
                             )
                             .on_click(move |_, window, cx| {
@@ -679,7 +685,7 @@ impl Desktop {
             .trigger(status_button(
                 "gateway-health-button",
                 icons::ACTIVITY,
-                self.status.clone(),
+                tr(self.status),
                 false,
             ))
             .content(move |_, _, cx| {
@@ -692,15 +698,16 @@ impl Desktop {
                 let refresh = owner.clone();
                 let history = owner.clone();
                 let online = this.out.is_some();
-                let label = health
-                    .and_then(|data| data.running)
-                    .map_or("网关状态", |running| {
-                        if running {
-                            "网关运行中"
-                        } else {
-                            "网关未运行"
-                        }
-                    });
+                let label =
+                    health
+                        .and_then(|data| data.running)
+                        .map_or(tr("网关状态"), |running| {
+                            if running {
+                                tr("网关运行中")
+                            } else {
+                                tr("网关未运行")
+                            }
+                        });
                 div()
                     .w(px(294.))
                     .flex()
@@ -716,8 +723,8 @@ impl Desktop {
                             } else {
                                 0xa0a8b4
                             })))
-                            .child(div().flex_1().text_size(px(13.)).child(this.status.clone()))
-                            .child(control("refresh-gateway-health", "刷新").on_click(
+                            .child(div().flex_1().text_size(px(13.)).child(tr(this.status)))
+                            .child(control("refresh-gateway-health", tr("刷新")).on_click(
                                 move |_, window, cx| {
                                     let _ = refresh.update(cx, |this, cx| {
                                         this.load_gateway_health(false, window, cx)
@@ -732,9 +739,9 @@ impl Desktop {
                             .filter(|_| online)
                             .map(|ready| {
                                 note(if ready {
-                                    "推理已就绪"
+                                    tr("推理已就绪")
                                 } else {
-                                    "推理未就绪"
+                                    tr("推理未就绪")
                                 })
                             }),
                     )
@@ -745,9 +752,9 @@ impl Desktop {
                             .pt_2()
                             .flex()
                             .items_center()
-                            .child(div().flex_1().child(heading("最近活动")))
+                            .child(div().flex_1().child(heading(tr("最近活动"))))
                             .when(online, |row| {
-                                row.child(control("gateway-more-logs", "更多日志").on_click(
+                                row.child(control("gateway-more-logs", tr("更多日志")).on_click(
                                     move |_, window, cx| {
                                         let _ = history.update(cx, |this, cx| {
                                             this.load_gateway_health(true, window, cx)
@@ -767,9 +774,9 @@ impl Desktop {
                             .text_color(rgb(MUTED))
                             .child(logs.unwrap_or_else(|| {
                                 if this.gateway_panel.diagnostics_job.is_some() {
-                                    "正在读取…".into()
+                                    tr("正在读取…").into()
                                 } else {
-                                    "暂无可显示的日志".into()
+                                    tr("暂无可显示的日志").into()
                                 }
                             })),
                     )
@@ -784,7 +791,7 @@ impl Desktop {
                                     .flex()
                                     .flex_col()
                                     .gap_1()
-                                    .child(heading("消息平台"))
+                                    .child(heading(tr("消息平台")))
                                     .child(
                                         div()
                                             .id("gateway-platforms")
@@ -821,11 +828,11 @@ impl Desktop {
                                                             ),
                                                         )
                                                         .child(note(if ready {
-                                                            "已连接"
+                                                            tr("已连接")
                                                         } else if state == "disabled" {
-                                                            "已停用"
+                                                            tr("已停用")
                                                         } else {
-                                                            "未连接"
+                                                            tr("未连接")
                                                         }))
                                                 },
                                             )),

@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::VecDeque,
     ops::Range,
@@ -196,8 +198,8 @@ impl Desktop {
                 continue;
             };
             let detail = match kind {
-                "@file" => "文件",
-                "@folder" => "文件夹",
+                "@file" => tr("文件"),
+                "@folder" => tr("文件夹"),
                 _ => continue,
             };
             let Some(token) = attachment_ref(&format!("{kind}:"), path) else {
@@ -334,7 +336,7 @@ impl Desktop {
             });
         completion_popup(
             "path-menu",
-            "工作区引用",
+            tr("工作区引用"),
             width,
             &self.references.scroll,
             rows,
@@ -343,7 +345,7 @@ impl Desktop {
 }
 
 fn starters(word: &str) -> Vec<Reference> {
-    [("@file:", "文件"), ("@folder:", "文件夹")]
+    [("@file:", tr("文件")), ("@folder:", tr("文件夹"))]
         .into_iter()
         .filter(|(token, _)| token.starts_with(word) && token != &word)
         .map(|(token, title)| Reference {

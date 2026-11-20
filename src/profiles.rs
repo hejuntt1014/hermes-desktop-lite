@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::HashMap;
 
 use gpui::{Context, ListOffset, SharedString, Task, Window};
@@ -74,7 +76,7 @@ impl Desktop {
             .map(|profile| profile.label.clone())
             .unwrap_or_else(|| {
                 if name.is_empty() {
-                    "默认".into()
+                    tr("默认").into()
                 } else {
                     name.to_owned().into()
                 }

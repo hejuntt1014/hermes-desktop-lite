@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{Context as _, Result, bail};
@@ -76,7 +78,7 @@ impl Desktop {
         self.close_files(window, cx);
         self.close_review(window, cx);
         self.close_palette(window, cx);
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("搜索配置档案"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(tr("搜索配置档案")));
         self.profile_editor.search_changes =
             Some(cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
@@ -186,7 +188,7 @@ impl Desktop {
         cx.notify();
         let Some(file) = file else { return };
         let name = self.profile_editor.selected.clone();
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder("查找记忆内容"));
+        let query = cx.new(|cx| InputState::new(window, cx).placeholder(tr("查找记忆内容")));
         cx.subscribe(&query, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify()
@@ -200,11 +202,11 @@ impl Desktop {
             .iter()
             .find(|p| p.name == name && !p.path.is_empty())
         else {
-            self.profile_editor.memory_text = Some(Err("网关未提供该档案的目录".into()));
+            self.profile_editor.memory_text = Some(Err(tr("网关未提供该档案的目录").into()));
             return;
         };
         let Some(gateway) = self.gateway.clone() else {
-            self.profile_editor.memory_text = Some(Err("网关未连接".into()));
+            self.profile_editor.memory_text = Some(Err(tr("网关未连接").into()));
             return;
         };
         let path = format!(
@@ -221,19 +223,19 @@ impl Desktop {
                 )
                 .await?;
             if wire["truncated"] == true {
-                bail!("记忆文件超过网关的预览上限")
+                bail!(tr("记忆文件超过网关的预览上限"))
             }
             Ok::<_, anyhow::Error>(
                 wire["text"]
                     .as_str()
-                    .context("网关未返回记忆原文")?
+                    .context(tr("网关未返回记忆原文"))?
                     .to_owned(),
             )
         });
         self.profile_editor.memory_job = Some(cx.spawn(async move |view, cx| {
             let result = request
                 .await
-                .context("读取任务中断")
+                .context(tr("读取任务中断"))
                 .and_then(|r| r)
                 .map_err(|e| e.to_string());
             let _ = view.update(cx, |this, cx| {
@@ -272,7 +274,7 @@ impl Desktop {
         cx.spawn_in(window, async move |view, cx| {
             let result = request
                 .await
-                .context("读取 SOUL.md 失败")
+                .context(tr("读取 SOUL.md 失败"))
                 .and_then(|result| result);
             let _ = view.update_in(cx, |this, window, cx| {
                 if !Arc::ptr_eq(&this.profile_editor.identity, &identity) {
@@ -303,7 +305,7 @@ impl Desktop {
         let field = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .rows(10)
-                .placeholder("写下这个配置档案的人格与行为指令")
+                .placeholder(tr("写下这个配置档案的人格与行为指令"))
                 .default_value(document.content.clone())
         });
         let owner = name.clone();
@@ -375,14 +377,14 @@ impl Desktop {
                 )
                 .await?;
             if result["ok"] != true {
-                bail!("网关未确认保存 SOUL.md");
+                bail!(tr("网关未确认保存 SOUL.md"));
             }
             Ok(Some(new_content))
         });
         cx.spawn_in(window, async move |view, cx| {
             let result = request
                 .await
-                .context("保存 SOUL.md 失败")
+                .context(tr("保存 SOUL.md 失败"))
                 .and_then(|result| result);
             let _ = view.update_in(cx, |this, _, cx| {
                 if !Arc::ptr_eq(&this.profile_editor.identity, &identity) {
@@ -404,7 +406,7 @@ impl Desktop {
                     }
                     Ok(None) => {
                         page.conflict = true;
-                        page.error = Some("远端 SOUL.md 已更新，当前编辑内容尚未保存。".into());
+                        page.error = Some(tr("远端 SOUL.md 已更新，当前编辑内容尚未保存。").into());
                     }
                     Err(error) => page.error = Some(error.to_string().into()),
                 }
@@ -419,7 +421,7 @@ impl Desktop {
         if self.profile_editor.create.is_some() || self.out.is_none() {
             return;
         }
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder("例如 research"));
+        let name = cx.new(|cx| InputState::new(window, cx).placeholder(tr("例如 research")));
         name.focus_handle(cx).focus(window, cx);
         self.profile_editor.create = Some(NewProfile {
             _changes: cx.subscribe(&name, |this, _, event: &InputEvent, cx| {
@@ -460,9 +462,9 @@ impl Desktop {
         {
             form.error = Some(
                 if valid_profile_name(&name) {
-                    "这个档案名称已存在。"
+                    tr("这个档案名称已存在。")
                 } else {
-                    "请用小写字母或数字开头，最多 64 个字符，可包含短横线和下划线。"
+                    tr("请用小写字母或数字开头，最多 64 个字符，可包含短横线和下划线。")
                 }
                 .into(),
             );
@@ -481,13 +483,13 @@ impl Desktop {
         cx.spawn_in(window, async move |view, cx| {
             let result = request
                 .await
-                .context("创建配置档案失败")
+                .context(tr("创建配置档案失败"))
                 .and_then(|result| result)
                 .and_then(|result| {
                     if result["ok"] == true {
                         Ok(())
                     } else {
-                        bail!("网关未确认创建配置档案");
+                        bail!(tr("网关未确认创建配置档案"));
                     }
                 });
             let _ = view.update_in(cx, |this, window, cx| {
@@ -535,5 +537,5 @@ fn soul_endpoint(name: &str) -> (String, [(&'static str, String); 1]) {
 async fn get_soul(gateway: &Gateway, name: &str) -> Result<SoulDocument> {
     let (path, query) = soul_endpoint(name);
     let wire = gateway.api(Method::GET, &path, &query, None).await?;
-    serde_json::from_value(wire).context("网关返回了无法读取的 SOUL.md")
+    serde_json::from_value(wire).context(tr("网关返回了无法读取的 SOUL.md"))
 }

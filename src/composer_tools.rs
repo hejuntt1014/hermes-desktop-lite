@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{Anchor, Context, IntoElement, prelude::*, px};
 use gpui_component::{
     Disableable,
@@ -24,37 +26,37 @@ impl Desktop {
             .size(px(24.))
             .p_0()
             .disabled(!may_edit_files)
-            .tooltip("添加附件或引用")
+            .tooltip(tr("添加附件或引用"))
             .child(svg_symbol(icons::PLUS, 13., MUTED))
             .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
                 menu.min_w(px(220.))
-                    .label("附件")
+                    .label(tr("附件"))
                     .item(menu_item(
                         &desktop,
-                        "上传文件或图片…",
+                        tr("上传文件或图片…"),
                         icons::FILE_TEXT,
                         true,
                         |this, _, cx| this.pick_files(cx),
                     ))
                     .item(menu_item(
                         &desktop,
-                        "粘贴剪贴板图片",
+                        tr("粘贴剪贴板图片"),
                         icons::CLIPBOARD,
                         true,
                         |this, _, cx| this.paste_clipboard_image(cx),
                     ))
                     .separator()
-                    .label("工作区引用")
+                    .label(tr("工作区引用"))
                     .item(menu_item(
                         &desktop,
-                        "引用远程文件",
+                        tr("引用远程文件"),
                         icons::FILE_TEXT,
                         can_reference,
                         |this, window, cx| this.add_reference_prefix("@file:", window, cx),
                     ))
                     .item(menu_item(
                         &desktop,
-                        "引用远程文件夹",
+                        tr("引用远程文件夹"),
                         icons::FOLDER_OPEN,
                         can_reference,
                         |this, window, cx| this.add_reference_prefix("@folder:", window, cx),
@@ -62,7 +64,7 @@ impl Desktop {
                     .separator()
                     .item(menu_item(
                         &desktop,
-                        "命令与技能",
+                        tr("命令与技能"),
                         icons::TERMINAL,
                         online,
                         |this, window, cx| this.open_slash_picker(window, cx),

@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use super::{
     Desktop,
     reading_position::{find_anchor, make_anchor},
@@ -74,7 +76,7 @@ impl Desktop {
         if let Some(row) = index {
             self.jump_message(row);
         } else {
-            self.banner = Some("这条收藏的消息已不在当前会话记录中".into());
+            self.banner = Some(tr("这条收藏的消息已不在当前会话记录中").into());
         }
     }
 

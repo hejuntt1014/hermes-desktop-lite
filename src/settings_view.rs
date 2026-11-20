@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     AnyElement, Context, Div, Entity, FocusHandle, FontWeight, ListOffset, Stateful, Subscription,
     Window, div, prelude::*, px, rgb, rgba,
@@ -8,12 +10,16 @@ use gpui_component::{
     switch::Switch,
 };
 
-use crate::settings::{DisplayPreferences, ReasoningVisibility};
+use crate::{
+    i18n::Language,
+    settings::{DisplayPreferences, ReasoningVisibility},
+};
 
 use super::{Desktop, view::icon_button};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
+    General,
     Chat,
     Layout,
     Connection,
@@ -23,15 +29,17 @@ pub(super) enum SettingsPage {
 impl SettingsPage {
     fn title(self) -> &'static str {
         match self {
-            Self::Chat => "聊天显示",
-            Self::Layout => "窗口与布局",
-            Self::Connection => "网关连接",
-            Self::Shortcuts => "键盘快捷键",
+            Self::General => tr("常规"),
+            Self::Chat => tr("聊天显示"),
+            Self::Layout => tr("窗口与布局"),
+            Self::Connection => tr("网关连接"),
+            Self::Shortcuts => tr("键盘快捷键"),
         }
     }
 
     fn glyph(self) -> &'static str {
         match self {
+            Self::General => "",
             Self::Chat => "",
             Self::Layout => "",
             Self::Connection => "",
@@ -67,7 +75,7 @@ impl SettingsView {
             }
         });
         Self {
-            page: SettingsPage::Chat,
+            page: SettingsPage::General,
             connection_error: None,
             focus: cx.focus_handle(),
             previous_focus: None,
@@ -217,6 +225,7 @@ impl Desktop {
             .p_2()
             .children(
                 [
+                    SettingsPage::General,
                     SettingsPage::Chat,
                     SettingsPage::Layout,
                     SettingsPage::Connection,
@@ -253,6 +262,7 @@ impl Desktop {
                 }),
             );
         let body = match page {
+            SettingsPage::General => self.general_preferences(cx),
             SettingsPage::Chat => self.chat_preferences(cx),
             SettingsPage::Layout => self.layout_preferences(cx),
             SettingsPage::Connection => self.connection_preferences(cx),
@@ -268,11 +278,11 @@ impl Desktop {
             .gap_2()
             .text_size(px(12.))
             .text_color(rgb(0x64748b))
-            .child("设置")
+            .child(tr("设置"))
             .child("›")
             .child(div().flex_1().text_color(rgb(0x243247)).child(page.title()))
             .child(
-                icon_button("settings-close", "", "关闭设置").on_click(cx.listener(
+                icon_button("settings-close", "", tr("关闭设置")).on_click(cx.listener(
                     |this, _, window, cx| {
                         cx.stop_propagation();
                         this.close_settings(window, cx);
@@ -328,19 +338,47 @@ impl Desktop {
         )
     }
 
+    fn general_preferences(&self, cx: &mut Context<Self>) -> Div {
+        setting_row(
+            tr("界面语言"),
+            None,
+            segments(
+                "interface-language",
+                [
+                    (Language::System, tr("跟随系统")),
+                    (Language::SimplifiedChinese, "简体中文"),
+                    (Language::English, "English"),
+                ],
+                self.settings.display.language,
+                |this, language, window, cx| {
+                    if this.settings.display.language != language {
+                        this.settings.display.language = language;
+                        this.apply_language(window, cx);
+                    }
+                },
+                cx,
+            ),
+        )
+    }
+
     fn chat_preferences(&self, cx: &mut Context<Self>) -> Div {
         let display = &self.settings.display;
         div()
             .flex()
             .flex_col()
             .child(setting_row(
-                "消息字号",
+                tr("消息字号"),
                 None,
                 segments(
                     "message-size",
-                    [(13, "小"), (14, "标准"), (16, "大"), (18, "特大")],
+                    [
+                        (13, tr("小")),
+                        (14, tr("标准")),
+                        (16, tr("大")),
+                        (18, tr("特大")),
+                    ],
                     display.message_size,
-                    |this, value| {
+                    |this, value, _, _| {
                         this.settings.display.message_size = value;
                         this.remeasure_transcript();
                     },
@@ -348,7 +386,7 @@ impl Desktop {
                 ),
             ))
             .child(setting_row(
-                "对话背景",
+                tr("对话背景"),
                 None,
                 Switch::new("conversation-backdrop")
                     .small()
@@ -360,8 +398,8 @@ impl Desktop {
                     })),
             ))
             .child(setting_row(
-                "对话时间线",
-                Some("显示会话右侧的轮次定位刻度。"),
+                tr("对话时间线"),
+                Some(tr("显示会话右侧的轮次定位刻度。")),
                 Switch::new("turn-rail-preference")
                     .small()
                     .checked(display.turn_rail)
@@ -375,70 +413,68 @@ impl Desktop {
                     })),
             ))
             .child(setting_row(
-                "推理过程",
-                Some("设置本机如何显示会话中的推理记录。"),
+                tr("推理过程"),
+                Some(tr("设置本机如何显示会话中的推理记录。")),
                 segments(
                     "reasoning-visibility",
                     [
-                        (ReasoningVisibility::Gateway, "跟随网关"),
-                        (ReasoningVisibility::Visible, "显示"),
-                        (ReasoningVisibility::Hidden, "隐藏"),
+                        (ReasoningVisibility::Gateway, tr("跟随网关")),
+                        (ReasoningVisibility::Visible, tr("显示")),
+                        (ReasoningVisibility::Hidden, tr("隐藏")),
                     ],
                     display.reasoning,
-                    |this, value| {
+                    |this, value, _, _| {
                         this.settings.display.reasoning = value;
                         this.apply_reasoning_visibility();
                     },
                     cx,
                 ),
             ))
-            .when(cfg!(windows), |panel| {
-                panel.children(
-                    [
-                        (true, "待处理提醒", display.alert_prompts),
-                        (false, "回复完成提醒", display.alert_replies),
-                    ]
-                    .into_iter()
-                    .map(|(prompt, label, enabled)| {
-                        setting_row(
-                            label,
-                            Some("窗口在后台时发送 Windows 通知。"),
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .children((prompt && self.selected.is_some()).then(|| {
-                                    super::view::control("preview-toast", "预览通知").on_click(
-                                        cx.listener(|this, _, window, cx| {
-                                            if let Some(key) = this.selected.clone() {
-                                                this.desktop_alert(
-                                                    &key,
-                                                    super::desktop_alerts::Alert::Preview,
-                                                    window,
-                                                    cx,
-                                                );
-                                            }
-                                        }),
-                                    )
-                                }))
-                                .child(Switch::new(label).small().checked(enabled).on_click(
-                                    cx.listener(move |this, checked: &bool, _, cx| {
-                                        if prompt {
-                                            this.settings.display.alert_prompts = *checked
-                                        } else {
-                                            this.settings.display.alert_replies = *checked
+            .children(
+                [
+                    (true, tr("待处理提醒"), display.alert_prompts),
+                    (false, tr("回复完成提醒"), display.alert_replies),
+                ]
+                .into_iter()
+                .map(|(prompt, label, enabled)| {
+                    setting_row(
+                        label,
+                        Some(tr("窗口在后台时发送桌面通知。")),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .children((prompt && self.selected.is_some()).then(|| {
+                                super::view::control("preview-toast", tr("预览通知")).on_click(
+                                    cx.listener(|this, _, window, cx| {
+                                        if let Some(key) = this.selected.clone() {
+                                            this.desktop_alert(
+                                                &key,
+                                                super::desktop_alerts::Alert::Preview,
+                                                window,
+                                                cx,
+                                            );
                                         }
-                                        this.persist(cx);
-                                        cx.notify();
                                     }),
-                                )),
-                        )
-                    }),
-                )
-            })
+                                )
+                            }))
+                            .child(Switch::new(label).small().checked(enabled).on_click(
+                                cx.listener(move |this, checked: &bool, _, cx| {
+                                    if prompt {
+                                        this.settings.display.alert_prompts = *checked
+                                    } else {
+                                        this.settings.display.alert_replies = *checked
+                                    }
+                                    this.persist(cx);
+                                    cx.notify();
+                                }),
+                            )),
+                    )
+                }),
+            )
             .child(setting_row(
-                "启动时恢复上次会话",
-                Some("关闭后，启动时进入一个空白草稿。"),
+                tr("启动时恢复上次会话"),
+                Some(tr("关闭后，启动时进入一个空白草稿。")),
                 Switch::new("restore-session-preference")
                     .small()
                     .checked(display.restore_session)
@@ -455,7 +491,7 @@ impl Desktop {
             .flex()
             .flex_col()
             .child(setting_row(
-                "会话侧栏",
+                tr("会话侧栏"),
                 None,
                 Switch::new("sidebar-preference")
                     .small()
@@ -466,8 +502,8 @@ impl Desktop {
             ))
             .children(cfg!(windows).then(|| {
                 setting_row(
-                    "侧栏磨砂",
-                    Some("让窗口后方的画面轻微透出。"),
+                    tr("侧栏磨砂"),
+                    Some(tr("让窗口后方的画面轻微透出。")),
                     Switch::new("sidebar-glass")
                         .small()
                         .checked(self.settings.display.sidebar_glass)
@@ -484,8 +520,8 @@ impl Desktop {
             .children(cfg!(windows).then(|| {
                 let enabled = self.settings.display.sidebar_glass;
                 setting_row(
-                    "磨砂透明度",
-                    Some("数值越高，越能看见窗口后方的颜色。"),
+                    tr("磨砂透明度"),
+                    Some(tr("数值越高，越能看见窗口后方的颜色。")),
                     div()
                         .flex_none()
                         .flex()
@@ -494,7 +530,7 @@ impl Desktop {
                         .child(
                             div().w(px(126.)).child(
                                 Slider::new(&self.settings_view.sidebar_transparency)
-                                    .accessibility_label("磨砂透明度")
+                                    .accessibility_label(tr("磨砂透明度"))
                                     .disabled(!enabled)
                                     .w_full(),
                             ),
@@ -513,13 +549,13 @@ impl Desktop {
                 )
             }))
             .child(setting_row(
-                "侧栏宽度",
+                tr("侧栏宽度"),
                 None,
                 segments(
                     "sidebar-width",
-                    [(210, "紧凑"), (237, "标准"), (280, "宽")],
+                    [(210, tr("紧凑")), (237, tr("标准")), (280, tr("宽"))],
                     self.settings.display.sidebar_width,
-                    |this, value| {
+                    |this, value, _, _| {
                         this.settings.display.sidebar_width = value;
                         this.remeasure_transcript();
                         this.reveal_selected_tab();
@@ -535,12 +571,12 @@ impl Desktop {
             .flex_col()
             .gap_3()
             .child(setting_row(
-                "连接状态",
+                tr("连接状态"),
                 None,
                 div()
                     .text_size(px(12.))
                     .text_color(rgb(0x596980))
-                    .child(self.status.clone()),
+                    .child(tr(self.status)),
             ))
             .child(
                 div()
@@ -598,7 +634,7 @@ fn segments<T>(
     id: &'static str,
     options: impl IntoIterator<Item = (T, &'static str)>,
     selected: T,
-    change: impl Fn(&mut Desktop, T) + Clone + 'static,
+    change: impl Fn(&mut Desktop, T, &mut Window, &mut Context<Desktop>) + Clone + 'static,
     cx: &mut Context<Desktop>,
 ) -> AnyElement
 where
@@ -633,8 +669,8 @@ where
                             part.bg(rgb(0xffffff)).text_color(rgb(0x24457a))
                         })
                         .hover(|part| part.bg(rgb(0xf7f9fc)))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            change(this, value);
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            change(this, value, window, cx);
                             this.persist(cx);
                             cx.notify();
                         }))
@@ -649,25 +685,25 @@ fn shortcuts() -> Div {
     div().flex().flex_col().children(
         [
             (
-                "快速打开",
+                tr("快速打开"),
                 if mac {
-                    "⌘K 或 ⌘P"
+                    tr("⌘K 或 ⌘P")
                 } else {
-                    "Ctrl+K 或 Ctrl+P"
+                    tr("Ctrl+K 或 Ctrl+P")
                 },
             ),
-            ("新建会话", if mac { "⌘N" } else { "Ctrl+N" }),
-            ("前后切换标签", "Ctrl+Tab / Ctrl+Shift+Tab"),
-            ("关闭标签", if mac { "⌘W" } else { "Ctrl+W" }),
+            (tr("新建会话"), if mac { "⌘N" } else { "Ctrl+N" }),
+            (tr("前后切换标签"), "Ctrl+Tab / Ctrl+Shift+Tab"),
+            (tr("关闭标签"), if mac { "⌘W" } else { "Ctrl+W" }),
             (
-                "重新打开已关闭的标签",
+                tr("重新打开已关闭的标签"),
                 if mac { "⌘⇧T" } else { "Ctrl+Shift+T" },
             ),
-            ("会话内查找", if mac { "⌘F" } else { "Ctrl+F" }),
-            ("定位会话轮次", "Alt+T"),
-            ("工作区文件", "Ctrl+Shift+E"),
-            ("审查 Git 变更", if mac { "⌘G" } else { "Ctrl+G" }),
-            ("打开设置", if mac { "⌘," } else { "Ctrl+," }),
+            (tr("会话内查找"), if mac { "⌘F" } else { "Ctrl+F" }),
+            (tr("定位会话轮次"), "Alt+T"),
+            (tr("工作区文件"), "Ctrl+Shift+E"),
+            (tr("审查 Git 变更"), if mac { "⌘G" } else { "Ctrl+G" }),
+            (tr("打开设置"), if mac { "⌘," } else { "Ctrl+," }),
         ]
         .into_iter()
         .map(|(label, key)| {
@@ -675,7 +711,7 @@ fn shortcuts() -> Div {
                 label,
                 None,
                 div()
-                    .font_family("Consolas")
+                    .font_family(crate::style::CODE_FONT)
                     .font_weight(FontWeight::MEDIUM)
                     .text_size(px(11.))
                     .text_color(rgb(0x54657e))

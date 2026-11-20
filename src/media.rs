@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     fs::File,
     io::{Cursor, Read, Write},
@@ -51,8 +53,9 @@ impl ChatImage {
         let value = unquote(value.trim());
         if let Some(payload) = inline_payload(value) {
             return (payload.len() <= MAX_BASE64_BYTES).then(|| Self {
-                name: format!(
+                name: crate::i18n::format_text!(
                     "图片.{}",
+                    "image.{}",
                     value["data:image/".len()..]
                         .split_once(';')
                         .map_or("png", |(format, _)| format)
@@ -402,10 +405,9 @@ fn project_images(raw: &str, user: bool) -> Option<ImageProjection> {
         return None;
     }
     if user {
-        while lines
-            .last()
-            .is_some_and(|last| matches!(last.trim(), "" | "[screenshot]" | "[image]" | "[图片]"))
-        {
+        while lines.last().is_some_and(|last| {
+            matches!(last.trim(), "" | "[screenshot]" | "[image]" | "[图片]")
+        }) {
             lines.pop();
         }
     }
@@ -518,7 +520,7 @@ fn decode(url: &str, large: bool) -> Result<Arc<RenderImage>> {
 }
 
 fn render_encoded_image(bytes: &[u8], width: u32, height: u32) -> Result<Arc<RenderImage>> {
-    let format = image::guess_format(bytes).context("图片格式无效")?;
+    let format = image::guess_format(bytes).context(tr("图片格式无效"))?;
     Ok(render_raster(decode_raster(bytes, format)?, width, height))
 }
 
@@ -546,11 +548,11 @@ pub(crate) fn decode_raster(bytes: &[u8], format: ImageFormat) -> Result<image::
             | ImageFormat::Bmp
             | ImageFormat::Tiff
     ) {
-        bail!("图片格式暂不支持");
+        bail!(tr("图片格式暂不支持"));
     }
     let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
     reader.limits(image_limits());
-    reader.decode().context("无法解码图片")
+    reader.decode().context(tr("无法解码图片"))
 }
 
 pub(crate) fn image_limits() -> Limits {
@@ -564,11 +566,11 @@ pub(crate) fn image_limits() -> Limits {
 fn decode_bytes(url: &str) -> Result<Vec<u8>> {
     let Some(payload) = inline_payload(url).filter(|payload| payload.len() <= MAX_BASE64_BYTES)
     else {
-        bail!("网关未返回支持的图片");
+        bail!(tr("网关未返回支持的图片"));
     };
-    let bytes = STANDARD.decode(payload).context("图片数据损坏")?;
+    let bytes = STANDARD.decode(payload).context(tr("图片数据损坏"))?;
     if bytes.len() > MAX_BYTES {
-        bail!("图片大小超过 16 MB");
+        bail!(tr("图片大小超过 16 MB"));
     }
     Ok(bytes)
 }
@@ -590,7 +592,7 @@ pub(crate) async fn prepare_replay_image(
 }
 
 fn prepare_picture(bytes: Vec<u8>) -> Result<ReplayImage> {
-    let format = image::guess_format(&bytes).context("图片格式无效")?;
+    let format = image::guess_format(&bytes).context(tr("图片格式无效"))?;
     let raster = decode_raster(&bytes, format)?;
     let digest = Sha256::digest(&bytes).into();
     let (extension, mime, bytes) = match format {
@@ -602,12 +604,12 @@ fn prepare_picture(bytes: Vec<u8>) -> Result<ReplayImage> {
             let mut output = Cursor::new(Vec::new());
             raster
                 .write_to(&mut output, ImageFormat::Png)
-                .context("无法转换图片")?;
+                .context(tr("无法转换图片"))?;
             ("png", "image/png", output.into_inner())
         }
     };
     if bytes.len() > MAX_BYTES {
-        bail!("图片大小超过 16 MB");
+        bail!(tr("图片大小超过 16 MB"));
     }
     let encoded = STANDARD.encode(bytes);
     Ok(ReplayImage {
@@ -629,18 +631,18 @@ pub(crate) fn is_image_file(path: &Path) -> bool {
 }
 
 fn read_local_image(path: &Path) -> Result<Vec<u8>> {
-    let file = File::open(path).context("无法打开图片")?;
+    let file = File::open(path).context(tr("无法打开图片"))?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
-        bail!("图片必须是普通文件");
+        bail!(tr("图片必须是普通文件"));
     }
     if metadata.len() > MAX_BYTES as u64 {
-        bail!("图片大小超过 16 MB");
+        bail!(tr("图片大小超过 16 MB"));
     }
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.take(MAX_BYTES as u64 + 1).read_to_end(&mut bytes)?;
     if bytes.len() > MAX_BYTES {
-        bail!("图片大小超过 16 MB");
+        bail!(tr("图片大小超过 16 MB"));
     }
     Ok(bytes)
 }
@@ -677,7 +679,7 @@ pub(crate) async fn upload_chat_image(
     let path = reply["path"]
         .as_str()
         .filter(|path| !path.is_empty())
-        .context("网关未返回原图路径")?;
+        .context(tr("网关未返回原图路径"))?;
     let mime = reply["mime_type"]
         .as_str()
         .filter(|mime| {
@@ -686,7 +688,7 @@ pub(crate) async fn upload_chat_image(
                 "image/png" | "image/jpeg" | "image/gif" | "image/webp"
             )
         })
-        .context("网关未返回支持的图片格式")?;
+        .context(tr("网关未返回支持的图片格式"))?;
     Ok(StagedImage {
         path: path.to_owned(),
         mime: mime.to_owned(),
@@ -734,11 +736,13 @@ pub(crate) async fn save_local_image(path: PathBuf, destination: PathBuf) -> Res
 }
 
 fn save_image_bytes(bytes: &[u8], destination: PathBuf) -> Result<()> {
-    let directory = destination.parent().context("没有可用的保存目录")?;
+    let directory = destination.parent().context(tr("没有可用的保存目录"))?;
     let mut file = tempfile::Builder::new()
         .prefix(".hermes-image-")
         .tempfile_in(directory)?;
     file.write_all(bytes)?;
     file.as_file().sync_all()?;
-    file.persist(destination).map(drop).context("无法保存图片")
+    file.persist(destination)
+        .map(drop)
+        .context(tr("无法保存图片"))
 }

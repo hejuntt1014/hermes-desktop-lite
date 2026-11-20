@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{ops::Range, sync::Arc, time::Duration};
 
 use gpui::{
@@ -309,20 +311,20 @@ impl Desktop {
                                     .child(count)
                             }))
                             .child(
-                                icon_button("find-previous", "", "上一个匹配")
+                                icon_button("find-previous", "", tr("上一个匹配"))
                                     .when(!has_matches, |button| button.opacity(0.45))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.step_transcript_find(true, cx)
                                     })),
                             )
                             .child(
-                                icon_button("find-next", "", "下一个匹配")
+                                icon_button("find-next", "", tr("下一个匹配"))
                                     .when(!has_matches, |button| button.opacity(0.45))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.step_transcript_find(false, cx)
                                     })),
                             )
-                            .child(icon_button("find-close", "", "关闭查找").on_click(
+                            .child(icon_button("find-close", "", tr("关闭查找")).on_click(
                                 cx.listener(|this, _, window, cx| {
                                     this.close_transcript_find(window, cx)
                                 }),

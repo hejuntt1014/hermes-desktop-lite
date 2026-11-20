@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     fs::File,
     io::{Read, Result as IoResult},
@@ -35,7 +37,7 @@ impl Desktop {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("添加附件".into()),
+            prompt: Some(tr("添加附件").into()),
         });
         cx.spawn(async move |view, cx| {
             let Ok(selection) = paths.await else {
@@ -54,7 +56,7 @@ impl Desktop {
                     }
                     Ok(None) => {}
                     Err(_) => {
-                        this.banner = Some("无法打开文件选择窗口".into());
+                        this.banner = Some(tr("无法打开文件选择窗口").into());
                         cx.notify();
                     }
                 }
@@ -184,7 +186,7 @@ impl Desktop {
                     .get(&key)
                     .is_some_and(|session| session.runtime == runtime_id && session.submitting)
                 {
-                    this.attachment_failed(&key, "会话已更新，请重新发送附件".into());
+                    this.attachment_failed(&key, tr("会话已更新，请重新发送附件").into());
                 } else if let Ok(Ok(data_url)) = result {
                     params["data_url"] = Value::String(data_url);
                     params["name"] = json!(name);
@@ -193,14 +195,14 @@ impl Desktop {
                         params,
                         Call::AttachFile(key.clone(), prepared),
                     ) {
-                        this.attachment_failed(&key, "未能上传附件".into());
+                        this.attachment_failed(&key, tr("未能上传附件").into());
                     }
                 } else {
                     let reason = match result {
                         Ok(Err(error)) if error.kind() == std::io::ErrorKind::FileTooLarge => {
-                            "附件大小超过 25 MB"
+                            tr("附件大小超过 25 MB")
                         }
-                        _ => "无法读取附件",
+                        _ => tr("无法读取附件"),
                     };
                     this.attachment_failed(&key, format!("{reason} · {name}"));
                 }
@@ -223,7 +225,7 @@ impl Desktop {
             return;
         };
         if prepared.pictures.len() >= 10 {
-            self.attachment_failed(&key, "一次最多发送 10 张图片".into());
+            self.attachment_failed(&key, tr("一次最多发送 10 张图片").into());
             cx.notify();
             return;
         }
@@ -235,13 +237,16 @@ impl Desktop {
                 let image =
                     tokio::task::spawn_blocking(move || prepare_local_image(&path)).await??;
                 let upload = upload_chat_image(&gateway, &profile, &name, &image.data_url).await?;
-                let reference =
-                    attachment_ref("@image:", &upload.path).context("网关未返回可用的图片引用")?;
+                let reference = attachment_ref("@image:", &upload.path)
+                    .context(tr("网关未返回可用的图片引用"))?;
                 Ok::<_, anyhow::Error>((upload, reference, legacy.then_some(image.data_url)))
             }
         });
         cx.spawn(async move |view, cx| {
-            let result = job.await.context("读取图片失败").and_then(|result| result);
+            let result = job
+                .await
+                .context(tr("读取图片失败"))
+                .and_then(|result| result);
             let _ = view.update(cx, |this, cx| {
                 if !this
                     .out
@@ -255,7 +260,7 @@ impl Desktop {
                     .get(&key)
                     .is_some_and(|session| session.runtime == runtime_id && session.submitting)
                 {
-                    this.attachment_failed(&key, "会话已更新，请重新发送图片".into());
+                    this.attachment_failed(&key, tr("会话已更新，请重新发送图片").into());
                 } else {
                     match result {
                         Ok((upload, reference, data_url)) => {
@@ -288,12 +293,12 @@ impl Desktop {
             .map(|index| prepared.picture_urls.get(index))
             .collect::<Option<Vec<_>>>();
         let Some(urls) = urls else {
-            self.attachment_failed(&key, "图片需要重新上传".into());
+            self.attachment_failed(&key, tr("图片需要重新上传").into());
             cx.notify();
             return;
         };
         if urls.iter().map(|url| url.len()).sum::<usize>() > 32 * 1024 * 1024 {
-            self.attachment_failed(&key, "这组图片超过网关可接收的数据大小".into());
+            self.attachment_failed(&key, tr("这组图片超过网关可接收的数据大小").into());
             cx.notify();
             return;
         }
@@ -319,7 +324,7 @@ impl Desktop {
         } else {
             let reason = error
                 .map(rpc_error)
-                .unwrap_or_else(|| "网关未返回附件引用".into());
+                .unwrap_or_else(|| tr("网关未返回附件引用").into());
             self.attachment_failed(&key, format!("{name} · {reason}"));
         }
     }

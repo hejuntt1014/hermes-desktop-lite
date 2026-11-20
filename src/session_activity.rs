@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::HashSet,
     time::{Duration, Instant},
@@ -121,7 +123,7 @@ impl Activity {
                 Some(Process {
                     id: id.to_owned(),
                     title: if title.is_empty() {
-                        "后台进程".into()
+                        tr("后台进程").into()
                     } else {
                         compact_preview(title, 200)
                     },
@@ -214,7 +216,7 @@ fn agent_row(id: String, payload: &Value, previous: Option<&Agent>, queued: bool
         title: if title.is_empty() {
             previous
                 .map(|row| row.title.clone())
-                .unwrap_or_else(|| "子代理".into())
+                .unwrap_or_else(|| tr("子代理").into())
         } else {
             compact_preview(title, 220)
         },

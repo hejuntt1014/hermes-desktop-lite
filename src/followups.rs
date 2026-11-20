@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     Context, Div, Entity, EntityInputHandler, FocusHandle, Focusable, Stateful, Window, div,
     prelude::*, px, rgb, rgba,
@@ -83,7 +85,13 @@ impl Desktop {
             if let Some(skill) = skill {
                 workspace.draft_skills.insert(key.to_owned(), skill);
             }
-            self.banner = Some(format!("无法保存待发送消息 · {error}").into());
+            self.banner = Some(
+                crate::i18n::format_text!(
+                    "无法保存待发送消息 · {error}",
+                    "Could not save the pending message · {error}"
+                )
+                .into(),
+            );
             cx.notify();
             return;
         }
@@ -215,7 +223,7 @@ impl Desktop {
             TextareaState::new(window, cx)
                 .auto_grow(3, 12)
                 .default_value(original.clone())
-                .placeholder("输入排队消息")
+                .placeholder(tr("输入排队消息"))
         });
         let changes = cx.subscribe_in(&input, window, |_, _, event, _, cx| {
             if matches!(event, InputEvent::Change) {
@@ -280,7 +288,7 @@ impl Desktop {
         }
         let Some(previous) = self.editable_followup(&key, &id).cloned() else {
             self.queue_editor.as_mut().unwrap().error =
-                Some("消息已开始发送，无法保存这次编辑".into());
+                Some(tr("消息已开始发送，无法保存这次编辑").into());
             cx.notify();
             return;
         };
@@ -313,7 +321,10 @@ impl Desktop {
             if let Some(stage) = old_stage {
                 self.workspace_mut().pending_submissions.insert(key, stage);
             }
-            self.queue_editor.as_mut().unwrap().error = Some(format!("无法保存排队消息 · {error}"));
+            self.queue_editor.as_mut().unwrap().error = Some(crate::i18n::format_text!(
+                "无法保存排队消息 · {error}",
+                "Could not save queued message · {error}"
+            ));
             cx.notify();
             return;
         }
@@ -374,7 +385,7 @@ impl Desktop {
                 .iter()
                 .any(|row| row.id == id && row.can_replace)
         {
-            editor.error = Some("这条消息已离开队列，编辑内容仍可复制".into());
+            editor.error = Some(tr("这条消息已离开队列，编辑内容仍可复制").into());
             cx.notify();
             return;
         }
@@ -422,7 +433,7 @@ impl Desktop {
                     .is_some_and(|attempt| attempt.submission_id == submission_id)
         }) {
             editor.replacement.as_mut().unwrap().sending = false;
-            editor.error = Some("未收到保存确认，可重试这次保存".into());
+            editor.error = Some(tr("未收到保存确认，可重试这次保存").into());
         }
         if timeout {
             self.attach(key, true);
@@ -467,7 +478,7 @@ impl Desktop {
                     }
                     editor.error = Some(rpc_error(error));
                 } else {
-                    editor.error = Some("未收到保存确认，可重试这次保存".into());
+                    editor.error = Some(tr("未收到保存确认，可重试这次保存").into());
                 }
             }
         }
@@ -515,7 +526,7 @@ impl Desktop {
                             div()
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .child("编辑排队消息"),
+                                .child(tr("编辑排队消息")),
                         )
                         .child(
                             Textarea::new(&editor.input)
@@ -559,13 +570,13 @@ impl Desktop {
                                         .flex_1()
                                         .text_size(px(11.))
                                         .text_color(rgb(MUTED))
-                                        .child("保存后移至队尾")
+                                        .child(tr("保存后移至队尾"))
                                 }))
                                 .child(
                                     Button::new("cancel-queue-edit")
                                         .small()
                                         .ghost()
-                                        .label(if saving { "关闭" } else { "取消" })
+                                        .label(if saving { tr("关闭") } else { tr("取消") })
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.close_queue_editor(window, cx)
                                         })),
@@ -576,11 +587,11 @@ impl Desktop {
                                         .primary()
                                         .disabled(!enabled)
                                         .label(if saving {
-                                            "正在保存…"
+                                            tr("正在保存…")
                                         } else if editor.replacement.is_some() {
-                                            "重试保存"
+                                            tr("重试保存")
                                         } else {
-                                            "保存"
+                                            tr("保存")
                                         })
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.save_queue_editor(window, cx)
@@ -623,7 +634,13 @@ impl Desktop {
                         .pending_submissions
                         .insert(key.to_owned(), prepared);
                 }
-                self.banner = Some(format!("无法撤回待发送消息 · {error}").into());
+                self.banner = Some(
+                    crate::i18n::format_text!(
+                        "无法撤回待发送消息 · {error}",
+                        "Could not withdraw the pending message · {error}"
+                    )
+                    .into(),
+                );
                 cx.notify();
                 return;
             }
@@ -738,44 +755,41 @@ impl Desktop {
             let sending = pending.is_some_and(|pending| pending.id == entry.id)
                 && (session.submitting || awaiting);
             let label = if sending && awaiting {
-                "待确认"
+                tr("待确认")
             } else if sending {
-                "正在发送"
+                tr("正在发送")
             } else {
-                "排队中"
+                tr("排队中")
             };
             let session_key = key.to_owned();
             let id = entry.id.clone();
             let retry_key = session_key.clone();
             let mut row = queue_row(("local-queue", index), label, entry.text.clone());
             if !entry.files.is_empty() {
-                row = row.child(
-                    div()
-                        .flex_none()
-                        .text_color(rgb(MUTED))
-                        .child(format!("{} 个附件", entry.files.len())),
-                );
+                row = row.child(div().flex_none().text_color(rgb(MUTED)).child(
+                    crate::i18n::format_text!("{} 个附件", "{} attachment(s)", entry.files.len()),
+                ));
             }
             if !sending {
                 if index == 0 && !session.running && session.error.is_some() {
-                    row = row.child(queue_action("retry-followup", "重试").on_click(
+                    row = row.child(queue_action("retry-followup", tr("重试")).on_click(
                         cx.listener(move |this, _, _, cx| this.retry_followup(&retry_key, cx)),
                     ));
                 }
                 let edit_key = session_key.clone();
                 let edit_id = id.clone();
                 if self.editable_followup(key, &entry.id).is_some() {
-                    row = row.child(queue_action("edit-followup", "编辑").on_click(cx.listener(
-                        move |this, _, window, cx| {
+                    row = row.child(queue_action("edit-followup", tr("编辑")).on_click(
+                        cx.listener(move |this, _, window, cx| {
                             this.open_queue_editor(&edit_key, &edit_id, false, window, cx)
-                        },
-                    )));
+                        }),
+                    ));
                 }
-                row = row.child(
-                    queue_action("withdraw-followup", "撤回").on_click(cx.listener(
-                        move |this, _, _, cx| this.withdraw_followup(&session_key, &id, cx),
-                    )),
-                );
+                row = row.child(queue_action("withdraw-followup", tr("撤回")).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.withdraw_followup(&session_key, &id, cx)
+                    }),
+                ));
             }
             panel = panel.child(row);
         }
@@ -793,9 +807,9 @@ impl Desktop {
         let mut row = queue_row(
             ("remote-queue", index),
             if changing {
-                "正在更新"
+                tr("正在更新")
             } else {
-                "排队中"
+                tr("排队中")
             },
             entry.text.clone(),
         );
@@ -805,15 +819,13 @@ impl Desktop {
             if entry.can_replace {
                 let edit_session = session.clone();
                 let edit_id = id.clone();
-                row = row.child(
-                    queue_action("edit-remote-queue", "编辑").on_click(cx.listener(
-                        move |this, _, window, cx| {
-                            this.open_queue_editor(&edit_session, &edit_id, true, window, cx)
-                        },
-                    )),
-                );
+                row = row.child(queue_action("edit-remote-queue", tr("编辑")).on_click(
+                    cx.listener(move |this, _, window, cx| {
+                        this.open_queue_editor(&edit_session, &edit_id, true, window, cx)
+                    }),
+                ));
             }
-            row = row.child(queue_action("withdraw-remote", "撤回").on_click(
+            row = row.child(queue_action("withdraw-remote", tr("撤回")).on_click(
                 cx.listener(move |this, _, _, cx| this.withdraw_server_queue(&session, &id, cx)),
             ));
         }

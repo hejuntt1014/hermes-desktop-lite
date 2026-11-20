@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     Anchor, ClipboardItem, Context, Div, IntoElement, SharedString, Stateful, Styled, Window, div,
     prelude::*, px, rgb, rgba,
@@ -96,18 +98,21 @@ impl Desktop {
                                         .text_size(px(14.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .text_color(rgb(INK))
-                                        .child("配置档案"),
+                                        .child(tr("配置档案")),
                                 )
-                                .children(
-                                    (!entries.is_empty())
-                                        .then(|| muted(format!("{} 个档案", entries.len()))),
-                                )
+                                .children((!entries.is_empty()).then(|| {
+                                    muted(crate::i18n::format_text!(
+                                        "{} 个档案",
+                                        "{} profile(s)",
+                                        entries.len()
+                                    ))
+                                }))
                                 .child(div().flex_1())
                                 .child(
                                     icon_button(
                                         "reload-profile-roster",
                                         icons::REFRESH,
-                                        "刷新配置档案列表",
+                                        tr("刷新配置档案列表"),
                                     )
                                     .on_click(cx.listener(
                                         |this, _, window, cx| this.load_profiles(window, cx),
@@ -117,7 +122,7 @@ impl Desktop {
                                     icon_button(
                                         "close-profile-editor",
                                         icons::TAB_CLOSE,
-                                        "关闭配置档案",
+                                        tr("关闭配置档案"),
                                     )
                                     .on_click(cx.listener(
                                         |this, _, window, cx| this.close_profile_editor(window, cx),
@@ -185,7 +190,7 @@ impl Desktop {
                                                         || {
                                                             div()
                                                                 .p_2()
-                                                                .child(muted("没有匹配的档案"))
+                                                                .child(muted(tr("没有匹配的档案")))
                                                         },
                                                     ),
                                                 ),
@@ -197,7 +202,7 @@ impl Desktop {
                                                 .border_color(rgb(LINE))
                                                 .p_2()
                                                 .child(
-                                                    control("new-profile", "新建档案")
+                                                    control("new-profile", tr("新建档案"))
                                                         .w_full()
                                                         .justify_start()
                                                         .gap_1()
@@ -259,11 +264,11 @@ impl Desktop {
                 .items_center()
                 .justify_center()
                 .child(muted(if self.out.is_none() {
-                    "网关未连接"
+                    tr("网关未连接")
                 } else if self.profile_editor.roster_failed {
-                    "无法读取配置档案，请刷新重试"
+                    tr("无法读取配置档案，请刷新重试")
                 } else {
-                    "正在读取配置档案…"
+                    tr("正在读取配置档案…")
                 }))
                 .into_any_element();
         };
@@ -291,7 +296,7 @@ impl Desktop {
                     format!("{}  ·  {}", model.id, model.provider)
                 }
             })
-            .unwrap_or_else(|| "跟随网关默认模型".into());
+            .unwrap_or_else(|| tr("跟随网关默认模型").into());
         let count = profile
             .skill_count
             .map(|count| count.to_string())
@@ -316,7 +321,11 @@ impl Desktop {
                             .child(profile.label.clone()),
                     )
                     .children(subtitle.map(muted))
-                    .children(profile.is_default.then(|| badge("默认", 0xe7efff, ACCENT)))
+                    .children(
+                        profile
+                            .is_default
+                            .then(|| badge(tr("默认"), 0xe7efff, ACCENT)),
+                    )
                     .children(profile.has_env.then(|| badge(".env", 0xedf0f4, MUTED))),
             )
             .children(
@@ -332,8 +341,8 @@ impl Desktop {
                     .gap_1()
                     .border_b_1()
                     .border_color(rgb(LINE))
-                    .child(meta("模型", model))
-                    .child(meta("技能", count)),
+                    .child(meta(tr("模型"), model))
+                    .child(meta(tr("技能"), count)),
             )
             .child(self.profile_document_toolbar(cx));
         if let Some(file) = self.profile_editor.memory_file {
@@ -358,14 +367,18 @@ impl Desktop {
                             .child("SOUL.md"),
                     )
                     .children(reload_enabled.then(|| {
-                        icon_button("reload-profile-soul", icons::REFRESH, "重新读取 SOUL.md")
-                            .size(px(22.))
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.load_profile_soul(true, window, cx)
-                            }))
+                        icon_button(
+                            "reload-profile-soul",
+                            icons::REFRESH,
+                            tr("重新读取 SOUL.md"),
+                        )
+                        .size(px(22.))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.load_profile_soul(true, window, cx)
+                        }))
                     })),
             )
-            .child(muted("为这个档案设置人格和行为指令。").pb_2())
+            .child(muted(tr("为这个档案设置人格和行为指令。")).pb_2())
             .children(buffer.map(|buffer| {
                 div().child(
                     Textarea::new(&buffer.field)
@@ -387,9 +400,9 @@ impl Desktop {
                     .items_center()
                     .justify_center()
                     .child(muted(if loading {
-                        "正在读取 SOUL.md…"
+                        tr("正在读取 SOUL.md…")
                     } else {
-                        "未能读取 SOUL.md"
+                        tr("未能读取 SOUL.md")
                     }))
             }))
             .children(
@@ -403,20 +416,22 @@ impl Desktop {
                     .flex()
                     .gap_2()
                     .flex_wrap()
-                    .child(
-                        control("copy-profile-draft", "复制草稿").on_click(move |_, _, cx| {
+                    .child(control("copy-profile-draft", tr("复制草稿")).on_click(
+                        move |_, _, cx| {
                             if let Some(field) = &copy {
                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                     field.read(cx).value().to_string(),
                                 ));
                             }
-                        }),
-                    )
-                    .child(control("use-remote-profile-soul", "载入远端版本").on_click(
-                        cx.listener(|this, _, window, cx| {
-                            this.load_profile_soul(true, window, cx);
-                        }),
+                        },
                     ))
+                    .child(
+                        control("use-remote-profile-soul", tr("载入远端版本")).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.load_profile_soul(true, window, cx);
+                            }),
+                        ),
+                    )
             }))
             .child(
                 div()
@@ -428,15 +443,15 @@ impl Desktop {
                     .child(
                         div().flex_1().min_w_0().children(
                             if !connected {
-                                Some("网关未连接")
+                                Some(tr("网关未连接"))
                             } else if saving {
-                                Some("正在保存…")
+                                Some(tr("正在保存…"))
                             } else if dirty {
-                                Some("有未保存的编辑")
+                                Some(tr("有未保存的编辑"))
                             } else if page.is_some_and(|page| page.saved) {
-                                Some("已保存")
+                                Some(tr("已保存"))
                             } else if buffer.is_some_and(|buffer| !buffer.exists()) {
-                                Some("暂无 SOUL.md，保存后创建。")
+                                Some(tr("暂无 SOUL.md，保存后创建。"))
                             } else {
                                 None
                             }
@@ -444,7 +459,7 @@ impl Desktop {
                         ),
                     )
                     .child(
-                        primary("save-profile-soul", "保存 SOUL.md", save_enabled).on_click(
+                        primary("save-profile-soul", tr("保存 SOUL.md"), save_enabled).on_click(
                             cx.listener(|this, _, window, cx| this.save_profile_soul(window, cx)),
                         ),
                     ),
@@ -485,7 +500,7 @@ impl Desktop {
             .memory_text
             .as_ref()
             .and_then(|result| result.as_ref().ok());
-        let copy = icon_button("memory-copy", icons::COPY, "复制原文").size(px(28.));
+        let copy = icon_button("memory-copy", icons::COPY, tr("复制原文")).size(px(28.));
         let copy = if let Some(text) = content {
             let text = text.clone();
             copy.on_click(move |_, _, cx| {
@@ -515,7 +530,7 @@ impl Desktop {
             }))
             .child(copy)
             .child(
-                icon_button("memory-refresh", icons::REFRESH, "重新读取")
+                icon_button("memory-refresh", icons::REFRESH, tr("重新读取"))
                     .size(px(28.))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.select_profile_document(Some(file), window, cx)
@@ -531,9 +546,12 @@ impl Desktop {
             .map(|q| q.read(cx).value().trim().to_lowercase())
             .unwrap_or_default();
         let shown = match &state.memory_text {
-            None => "正在读取…".into(),
-            Some(Err(err)) => format!("无法读取 {file} · {err}"),
-            Some(Ok(text)) if text.is_empty() => "暂无记忆".into(),
+            None => tr("正在读取…").into(),
+            Some(Err(err)) => crate::i18n::format_text!(
+                "无法读取 {file} · {err}",
+                "Could not load {file} · {err}"
+            ),
+            Some(Ok(text)) if text.is_empty() => tr("暂无记忆").into(),
             Some(Ok(text)) if query.is_empty() => text.clone(),
             Some(Ok(text)) => {
                 let hits = text
@@ -541,7 +559,7 @@ impl Desktop {
                     .filter(|line| line.to_lowercase().contains(&query))
                     .collect::<Vec<_>>();
                 if hits.is_empty() {
-                    "没有匹配的内容".into()
+                    tr("没有匹配的内容").into()
                 } else {
                     hits.join("\n")
                 }
@@ -563,7 +581,7 @@ impl Desktop {
     fn profile_create_form(&self, form: &NewProfile, cx: &mut Context<Self>) -> gpui::AnyElement {
         let desktop = cx.entity().downgrade();
         let profiles = self.profiles.entries.clone();
-        let source = form.source.clone().unwrap_or_else(|| "空白档案".into());
+        let source = form.source.clone().unwrap_or_else(|| tr("空白档案").into());
         let choose_from = Button::new("profile-clone-source")
             .ghost()
             .compact()
@@ -585,7 +603,7 @@ impl Desktop {
                 for name in std::iter::once(None)
                     .chain(profiles.iter().map(|profile| Some(profile.name.clone())))
                 {
-                    let label = name.clone().unwrap_or_else(|| "空白档案".into());
+                    let label = name.clone().unwrap_or_else(|| tr("空白档案").into());
                     let weak = desktop.clone();
                     menu = menu.item(PopupMenuItem::new(label).on_click(move |_, _, cx| {
                         let _ = weak.update(cx, |this, cx| {
@@ -619,14 +637,14 @@ impl Desktop {
                             .text_size(px(16.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(rgb(INK))
-                            .child("新建配置档案"),
+                            .child(tr("新建配置档案")),
                     )
                     .child(
                         div()
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .child(muted("档案名称"))
+                            .child(muted(tr("档案名称")))
                             .child(Input::new(&form.name).small().disabled(form.busy)),
                     )
                     .child(
@@ -634,7 +652,7 @@ impl Desktop {
                             .flex()
                             .flex_col()
                             .gap_1()
-                            .child(muted("复制自"))
+                            .child(muted(tr("复制自")))
                             .child(choose_from),
                     )
                     .children(form.error.clone().map(error_line))
@@ -644,18 +662,18 @@ impl Desktop {
                             .justify_end()
                             .items_center()
                             .gap_2()
-                            .child(
-                                control("cancel-profile-create", "取消").on_click(cx.listener(
-                                    |this, _, window, cx| this.escape_profile_editor(window, cx),
-                                )),
-                            )
+                            .child(control("cancel-profile-create", tr("取消")).on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.escape_profile_editor(window, cx)
+                                }),
+                            ))
                             .child(
                                 primary(
                                     "create-profile",
                                     if form.busy {
-                                        "正在创建…"
+                                        tr("正在创建…")
                                     } else {
-                                        "创建档案"
+                                        tr("创建档案")
                                     },
                                     !form.busy && self.out.is_some(),
                                 )

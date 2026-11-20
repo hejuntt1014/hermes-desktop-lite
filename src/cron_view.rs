@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use chrono::Utc;
 use gpui::{
     Context, Div, IntoElement, SharedString, Stateful, Window, div, prelude::*, px, rgb, rgba,
@@ -35,7 +37,7 @@ impl Desktop {
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(super::sidebar_view::SIDEBAR_HOVER)))
                 .child(svg_symbol(icons::CLOCK, 13., ACCENT))
-                .child(div().flex_1().child("定时任务"))
+                .child(div().flex_1().child(tr("定时任务")))
                 .child(svg_symbol(
                     if expanded {
                         icons::CHEVRON_DOWN
@@ -63,7 +65,7 @@ impl Desktop {
                 }))
                 .child(
                     div().flex().justify_end().pr_1().child(
-                        icon_button("cron-all", icons::ELLIPSIS, "管理定时任务")
+                        icon_button("cron-all", icons::ELLIPSIS, tr("管理定时任务"))
                             .size(px(23.))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.open_cron(None, window, cx)),
@@ -76,13 +78,13 @@ impl Desktop {
 
     fn cron_list_status(&self, page: Option<&JobPage>) -> &'static str {
         if self.out.is_none() {
-            "网关未连接"
+            tr("网关未连接")
         } else if page.is_some_and(|page| page.error.is_some()) {
-            "定时任务读取失败"
+            tr("定时任务读取失败")
         } else if page.is_some_and(|page| page.ready) {
-            "暂无定时任务"
+            tr("暂无定时任务")
         } else {
-            "正在读取定时任务…"
+            tr("正在读取定时任务…")
         }
     }
 
@@ -152,7 +154,7 @@ impl Desktop {
             .triggering
             .contains(&(self.cron.profile.clone(), job.id.clone()))
         {
-            ("执行中".into(), ACCENT)
+            (tr("执行中").into(), ACCENT)
         } else {
             job.status(Utc::now().timestamp())
         }
@@ -189,7 +191,7 @@ impl Desktop {
                 .child(quiet(if jobs.is_empty() {
                     self.cron_list_status(page)
                 } else {
-                    "选择一项定时任务"
+                    tr("选择一项定时任务")
                 }))
                 .children(page.and_then(|page| page.error.clone()).map(cron_error)),
         };
@@ -232,7 +234,7 @@ impl Desktop {
                                 .child(
                                     div()
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .child("定时任务"),
+                                        .child(tr("定时任务")),
                                 )
                                 .child(
                                     div()
@@ -246,14 +248,14 @@ impl Desktop {
                                 )
                                 .child(div().flex_1())
                                 .child(
-                                    icon_button("reload-cron", icons::REFRESH, "刷新定时任务")
+                                    icon_button("reload-cron", icons::REFRESH, tr("刷新定时任务"))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.refresh_cron_jobs(cx);
                                             this.refresh_cron_runs(cx);
                                         })),
                                 )
                                 .child(
-                                    icon_button("close-cron", icons::TAB_CLOSE, "关闭定时任务")
+                                    icon_button("close-cron", icons::TAB_CLOSE, tr("关闭定时任务"))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.close_cron(window, cx)
                                         })),
@@ -299,7 +301,7 @@ impl Desktop {
                                                 .border_color(rgb(LINE))
                                                 .child(cron_button(
                                                     "cron-create",
-                                                    "新建任务",
+                                                    tr("新建任务"),
                                                     available,
                                                     |this, window, cx| {
                                                         this.edit_cron(None, window, cx)
@@ -369,14 +371,14 @@ impl Desktop {
                             .child(div().size(px(6.)).rounded_full().bg(rgb(color)))
                             .child(quiet(status)),
                     )
-                    .child(detail("计划", job.schedule_label()))
+                    .child(detail(tr("计划"), job.schedule_label()))
                     .children(
                         cron_datetime(job.next_run_at.as_deref())
-                            .map(|time| detail("下次执行", time)),
+                            .map(|time| detail(tr("下次执行"), time)),
                     )
                     .children(
                         cron_datetime(job.last_run_at.as_deref())
-                            .map(|time| detail("上次执行", time)),
+                            .map(|time| detail(tr("上次执行"), time)),
                     )
                     .children(
                         job.deliver
@@ -384,9 +386,9 @@ impl Desktop {
                             .filter(|target| !target.is_empty())
                             .map(|target| {
                                 detail(
-                                    "投递",
+                                    tr("投递"),
                                     if target == "local" {
-                                        "仅本地保存"
+                                        tr("仅本地保存")
                                     } else {
                                         target
                                     },
@@ -407,9 +409,9 @@ impl Desktop {
                             .pt_2()
                             .child(detail(
                                 if job.prompt.as_deref().is_none_or(str::is_empty) {
-                                    "脚本"
+                                    tr("脚本")
                                 } else {
-                                    "执行指令"
+                                    tr("执行指令")
                                 },
                                 text,
                             ))
@@ -426,18 +428,18 @@ impl Desktop {
                                     .text_size(px(11.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .text_color(rgb(MUTED))
-                                    .child("最近执行"),
+                                    .child(tr("最近执行")),
                             )
                             .children(runs.and_then(|runs| runs.error.clone()).map(cron_error))
                             .children(runs.is_none_or(|runs| runs.rows.is_empty()).then(|| {
                                 quiet(if runs.is_some_and(|runs| runs.ready) {
-                                    "暂无执行记录"
+                                    tr("暂无执行记录")
                                 } else if self.out.is_none() {
-                                    "网关未连接"
+                                    tr("网关未连接")
                                 } else if runs.is_some_and(|runs| runs.error.is_some()) {
-                                    "执行记录读取失败"
+                                    tr("执行记录读取失败")
                                 } else {
-                                    "正在读取执行记录…"
+                                    tr("正在读取执行记录…")
                                 })
                             }))
                             .children(runs.into_iter().flat_map(|runs| &runs.rows).map(|run| {
@@ -512,17 +514,19 @@ impl Desktop {
                             .gap_2()
                             .child(
                                 quiet(match action {
-                                    JobAction::Delete => "删除此定时任务？",
-                                    _ => "现在执行此定时任务？",
+                                    JobAction::Delete => tr("删除此定时任务？"),
+                                    _ => tr("现在执行此定时任务？"),
                                 })
                                 .flex_1(),
                             )
-                            .child(control("cron-cancel-action", "取消").on_click(cx.listener(
-                                |this, _, _, cx| {
-                                    this.cron.confirmation = None;
-                                    cx.notify();
-                                },
-                            )))
+                            .child(
+                                control("cron-cancel-action", tr("取消")).on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.cron.confirmation = None;
+                                        cx.notify();
+                                    },
+                                )),
+                            )
                             .child(
                                 primary("cron-confirm-action", action.label(), available).on_click(
                                     cx.listener(move |this, _, _, cx| {
@@ -540,7 +544,7 @@ impl Desktop {
                             .gap_1()
                             .child(cron_button(
                                 "cron-edit",
-                                "编辑",
+                                tr("编辑"),
                                 available && !running,
                                 move |this, window, cx| this.edit_cron(Some(&edit), window, cx),
                                 cx,
@@ -554,7 +558,11 @@ impl Desktop {
                             ))
                             .child(cron_button(
                                 "cron-run-now",
-                                if running { "执行中" } else { "立即执行" },
+                                if running {
+                                    tr("执行中")
+                                } else {
+                                    tr("立即执行")
+                                },
                                 available && !running,
                                 |this, _, cx| {
                                     this.cron.confirmation = Some(JobAction::Run);
@@ -565,7 +573,7 @@ impl Desktop {
                             .child(div().flex_1())
                             .child(cron_button(
                                 "cron-delete",
-                                "删除",
+                                tr("删除"),
                                 available && !running,
                                 |this, _, cx| {
                                     this.cron.confirmation = Some(JobAction::Delete);
@@ -598,26 +606,26 @@ impl Desktop {
                             .text_size(px(16.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .child(if editor.id.is_some() {
-                                "编辑任务"
+                                tr("编辑任务")
                             } else {
-                                "新建任务"
+                                tr("新建任务")
                             }),
                     )
                     .child(field(
-                        "任务名称",
+                        tr("任务名称"),
                         Input::new(&editor.name).small().disabled(!available),
                     ))
                     .child(field(
-                        "计划",
+                        tr("计划"),
                         Input::new(&editor.schedule).small().disabled(!available),
                     ))
                     .child(field(
-                        "投递目标",
+                        tr("投递目标"),
                         Input::new(&editor.deliver).small().disabled(!available),
                     ))
                     .children((!editor.script_only).then(|| {
                         field(
-                            "执行指令",
+                            tr("执行指令"),
                             Textarea::new(&editor.prompt).small().disabled(!available),
                         )
                     })),
@@ -639,7 +647,7 @@ impl Desktop {
                     .border_color(rgb(LINE))
                     .child(cron_button(
                         "cron-cancel-edit",
-                        "取消",
+                        tr("取消"),
                         !self.cron.busy,
                         |this, _, cx| {
                             this.cron.editor = None;
@@ -652,9 +660,9 @@ impl Desktop {
                         primary(
                             "cron-save",
                             if self.cron.busy {
-                                "正在保存…"
+                                tr("正在保存…")
                             } else {
-                                "保存"
+                                tr("保存")
                             },
                             available,
                         )

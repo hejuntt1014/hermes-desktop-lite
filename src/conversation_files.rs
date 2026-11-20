@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use super::{
     Desktop,
     attachment_ops::leading_file_refs,
@@ -175,9 +177,9 @@ impl Desktop {
                 .text_size(px(13.))
                 .text_color(rgb(0x788393))
                 .child(if loading {
-                    "正在整理会话文件…"
+                    tr("正在整理会话文件…")
                 } else {
-                    "本次会话暂无文件"
+                    tr("本次会话暂无文件")
                 });
         }
         let weak = cx.entity().downgrade();
@@ -227,7 +229,9 @@ impl Desktop {
                                             .child(entry.path.clone()),
                                     ),
                             );
-                        for (action, label) in ["定位消息", "预览", "下载"].into_iter().enumerate()
+                        for (action, label) in [tr("定位消息"), tr("预览"), tr("下载")]
+                            .into_iter()
+                            .enumerate()
                         {
                             let entry = entry.clone();
                             let weak = weak.clone();
@@ -268,7 +272,7 @@ impl Desktop {
             if let Some(row) = row {
                 self.jump_message(row)
             } else {
-                self.banner = Some("原消息已不在当前会话记录中".into())
+                self.banner = Some(tr("原消息已不在当前会话记录中").into())
             }
         } else if let Some(image) = &entry.image {
             self.collection_image(

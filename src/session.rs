@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
@@ -100,7 +102,7 @@ impl Summary {
                     .map(str::trim)
                     .filter(|title| !title.is_empty())
             })
-            .unwrap_or("未命名会话");
+            .unwrap_or(tr("未命名会话"));
         let updated_at = ["last_active", "started_at"]
             .iter()
             .filter_map(|key| row[key].as_f64())
@@ -216,7 +218,7 @@ impl Tool {
         let name = ["name", "tool_name"]
             .into_iter()
             .find_map(|key| value[key].as_str().filter(|name| !name.is_empty()))
-            .unwrap_or("工具");
+            .unwrap_or(tr("工具"));
         let id = value["tool_id"]
             .as_str()
             .or_else(|| value["tool_call_id"].as_str())
@@ -374,10 +376,10 @@ impl Prompt {
             .filter_map(|(qid, value)| Some((qid.clone(), value.as_str()?.to_owned())))
             .collect();
         let label = match kind {
-            "approval" => "工具审批",
-            "clarify" => "Hermes 想确认",
-            "connection" => "连接请求",
-            _ => "输入请求",
+            "approval" => tr("工具审批"),
+            "clarify" => tr("Hermes 想确认"),
+            "connection" => tr("连接请求"),
+            _ => tr("输入请求"),
         };
         Self {
             route,

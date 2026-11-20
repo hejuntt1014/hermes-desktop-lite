@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     time::Instant,
@@ -147,7 +149,7 @@ impl Catalog {
     fn from_response(value: Value) -> Result<Self> {
         let providers = value["providers"]
             .as_array()
-            .context("网关未返回模型列表")?;
+            .context(tr("网关未返回模型列表"))?;
         let mut models = Vec::new();
         let mut codex_usage = None;
         for provider in providers {
@@ -572,7 +574,7 @@ impl Desktop {
         cx.spawn(async move |view, cx| {
             let result = read
                 .await
-                .context("无法读取模型列表")
+                .context(tr("无法读取模型列表"))
                 .and_then(|result| result);
             let _ = view.update(cx, |this, cx| {
                 if this.model_controls.catalog_generation != generation {
@@ -592,7 +594,13 @@ impl Desktop {
                         ) =>
                     {
                         if refresh {
-                            this.banner = Some(format!("无法刷新模型列表 · {error}").into());
+                            this.banner = Some(
+                                crate::i18n::format_text!(
+                                    "无法刷新模型列表 · {error}",
+                                    "Could not refresh models · {error}"
+                                )
+                                .into(),
+                            );
                         }
                     }
                     Err(error) => {
@@ -758,7 +766,7 @@ impl Desktop {
                 let mut params = if let Choice::Speed(speed) = &choice {
                     json!({"session_id":runtime_id,"key":"fast","value":speed})
                 } else if canonical {
-                    let (revision, generation) = gateway.session_version(&key, &profile).await?.context("无法读取会话版本")?;
+                    let (revision, generation) = gateway.session_version(&key, &profile).await?.context(tr("无法读取会话版本"))?;
                     let (operation, mut payload) = match choice {
                         Choice::Model(model) => ("model", json!({"model":model.id, "provider":model.provider})),
                         Choice::Effort(effort) => ("reasoning", json!({"effort":effort})),
@@ -772,7 +780,7 @@ impl Desktop {
                         Choice::Model(model) => {
                             if model.id.split_whitespace().any(|word| word.starts_with("--") ||
                                 word.starts_with(['‒','–','—','―'])) || model.provider.chars().any(char::is_whitespace) {
-                                anyhow::bail!("网关不支持切换到此模型标识");
+                                anyhow::bail!(tr("网关不支持切换到此模型标识"));
                             }
                             ("model",format!("{} --provider {} --session",model.id,model.provider))
                         }
@@ -789,7 +797,7 @@ impl Desktop {
         cx.spawn(async move |view, cx| {
             let result = job
                 .await
-                .context("无法准备会话模型切换")
+                .context(tr("无法准备会话模型切换"))
                 .and_then(|result| result);
             let _ = view.update(cx, |this, cx| {
                 let Some(plan) = this
@@ -844,7 +852,7 @@ impl Desktop {
             let message = result["confirm_message"]
                 .as_str()
                 .filter(|value| !value.trim().is_empty())
-                .unwrap_or("网关要求确认这次模型切换。");
+                .unwrap_or(tr("网关要求确认这次模型切换。"));
             self.model_controls.prompts.insert(
                 key,
                 Prompt {
@@ -902,7 +910,10 @@ impl Desktop {
                 preference_update = Some(Choice::Effort(value.to_owned()));
                 if plan.show_receipt {
                     receipt = Some(if deferred {
-                        format!("reasoning: {value} · 下一轮生效")
+                        crate::i18n::format_text!(
+                            "reasoning: {value} · 下一轮生效",
+                            "Reasoning: {value} · applies on the next turn"
+                        )
                     } else {
                         format!("reasoning: {value}")
                     });

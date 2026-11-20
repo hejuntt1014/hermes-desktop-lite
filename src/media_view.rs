@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     cell::{OnceCell, RefCell},
     collections::{HashMap, VecDeque},
@@ -291,7 +293,7 @@ impl<'a> TranscriptImages<'a> {
                     )
                     .when(width >= 68. && height >= 54., |card| {
                         card.child(
-                            media_button_base("save-inline-image", "下载原图")
+                            media_button_base("save-inline-image", tr("下载原图"))
                                 .absolute()
                                 .top(px(8.))
                                 .right(px(8.))
@@ -335,7 +337,7 @@ impl<'a> TranscriptImages<'a> {
                         .child(if let Some(error) = error {
                             error
                         } else {
-                            "正在加载图片…".into()
+                            tr("正在加载图片…").into()
                         }),
                 ),
             });
@@ -623,14 +625,14 @@ impl Desktop {
         self.media.download_error = None;
         cx.spawn(async move |view, cx| {
             let result = async {
-                let Some(path) = destination.await.context("保存对话框已关闭")?? else {
+                let Some(path) = destination.await.context(tr("保存对话框已关闭"))?? else {
                     return Ok::<_, anyhow::Error>(());
                 };
                 runtime
                     .spawn(async move {
                         match source {
                             PreviewSource::Chat(key, image) => {
-                                let gateway = gateway.context("网关未连接")?;
+                                let gateway = gateway.context(tr("网关未连接"))?;
                                 save_image(gateway, key.session, key.profile, image, path).await
                             }
                             PreviewSource::Draft(local) => save_local_image(local, path).await,
@@ -645,7 +647,11 @@ impl Desktop {
                 }
                 desktop.media.downloading = None;
                 if let Err(error) = result {
-                    let message: SharedString = format!("保存图片失败 · {error}").into();
+                    let message: SharedString = crate::i18n::format_text!(
+                        "保存图片失败 · {error}",
+                        "Could not save image · {error}"
+                    )
+                    .into();
                     desktop.media.download_error = Some((key, message.clone()));
                     desktop.banner = Some(message);
                 }
@@ -689,8 +695,8 @@ impl Desktop {
         let key = lightbox.key.clone();
         let source = lightbox.source.clone();
         let save_label = match &source {
-            PreviewSource::Chat(..) => "下载原图",
-            PreviewSource::Draft(_) => "保存原图",
+            PreviewSource::Chat(..) => tr("下载原图"),
+            PreviewSource::Draft(_) => tr("保存原图"),
         };
         let saving = self.media.downloading.as_ref() == Some(&key);
         let status = self
@@ -702,7 +708,7 @@ impl Desktop {
             .or_else(|| match &lightbox.full {
                 Loading::Failed(reason) => Some(reason.clone()),
                 Loading::Pending { .. } if lightbox.image().is_none() => {
-                    Some("正在加载图片…".into())
+                    Some(tr("正在加载图片…").into())
                 }
                 _ => None,
             });
@@ -782,7 +788,7 @@ impl Desktop {
                                 .bg(rgb(0xffffff))
                                 .shadow_md()
                                 .child(
-                                    media_button("previous-image", icons::BACK, "上一张（←）")
+                                    media_button("previous-image", icons::BACK, tr("上一张（←）"))
                                         .when(gallery.offset(-1).is_none(), |button| {
                                             button.opacity(0.4)
                                         })
@@ -804,7 +810,7 @@ impl Desktop {
                                         )),
                                 )
                                 .child(
-                                    media_button("next-image", icons::RIGHT, "下一张（→）")
+                                    media_button("next-image", icons::RIGHT, tr("下一张（→）"))
                                         .when(gallery.offset(1).is_none(), |button| {
                                             button.opacity(0.4)
                                         })
@@ -829,7 +835,7 @@ impl Desktop {
                                 .bg(rgb(0xffffff))
                                 .shadow_md()
                                 .child(
-                                    media_button("zoom-out", icons::ZOOM_OUT, "缩小")
+                                    media_button("zoom-out", icons::ZOOM_OUT, tr("缩小"))
                                         .when(lightbox.zoom_steps <= -4, |button| {
                                             button.opacity(0.4)
                                         })
@@ -849,7 +855,7 @@ impl Desktop {
                                         .text_color(rgb(0x626c77))
                                         .cursor_pointer()
                                         .tooltip(|window, cx| {
-                                            Tooltip::new("恢复原始缩放").build(window, cx)
+                                            Tooltip::new(tr("恢复原始缩放")).build(window, cx)
                                         })
                                         .child(format!("{:.0}%", scale * 100.))
                                         .on_click(cx.listener(|this, _, window, cx| {
@@ -858,7 +864,7 @@ impl Desktop {
                                         })),
                                 )
                                 .child(
-                                    media_button("zoom-in", icons::ZOOM_IN, "放大")
+                                    media_button("zoom-in", icons::ZOOM_IN, tr("放大"))
                                         .when(lightbox.zoom_steps >= 8, |button| {
                                             button.opacity(0.4)
                                         })
@@ -1039,6 +1045,6 @@ fn load_result(
     match result {
         Ok(Ok(image)) => Loading::Ready(image),
         Ok(Err(error)) => Loading::Failed(error.to_string().into()),
-        Err(_) => Loading::Failed("无法加载图片".into()),
+        Err(_) => Loading::Failed(tr("无法加载图片").into()),
     }
 }

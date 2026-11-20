@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
@@ -53,12 +55,13 @@ pub(super) fn tool_run(
             if first.is_empty() {
                 ToolGroup::Commands.label(tools.len(), pending)
             } else {
-                format!(
+                crate::i18n::format_text!(
                     "{} {} + {} 条命令",
+                    "{} {} + {} more command(s)",
                     if pending == 0 {
-                        "已运行"
+                        tr("已运行")
                     } else {
-                        "正在运行"
+                        tr("正在运行")
                     },
                     compact_preview(&first, 80),
                     tools.len() - 1
@@ -66,7 +69,7 @@ pub(super) fn tool_run(
             }
         }
         (Some(group), _) => group.label(tools.len(), pending),
-        _ => format!("{} 项工具活动", tools.len()),
+        _ => crate::i18n::format_text!("{} 项工具活动", "{} tool action(s)", tools.len()),
     };
     let weak = entity.downgrade();
     let header = disclosure(
@@ -81,7 +84,10 @@ pub(super) fn tool_run(
         },
     )
     .when(failed > 0, |row| {
-        row.child(badge(format!("{failed} 项失败"), true))
+        row.child(badge(
+            crate::i18n::format_text!("{failed} 项失败", "{failed} failed"),
+            true,
+        ))
     })
     .on_click(move |_, _, app| {
         let _ = weak.update(app, |desktop, cx| {
@@ -152,13 +158,16 @@ pub(super) fn tool_row(
     let weak_retry = weak.clone();
     let id = tool.id.clone();
     let state = if tool.failed {
-        Some(badge("失败", true))
+        Some(badge(tr("失败"), true))
     } else if !tool.done {
-        Some(badge("运行中", false))
+        Some(badge(tr("运行中"), false))
     } else {
-        tool.duration
-            .filter(|_| open)
-            .map(|seconds| badge(format!("{seconds:.1} 秒"), false))
+        tool.duration.filter(|_| open).map(|seconds| {
+            badge(
+                crate::i18n::format_text!("{seconds:.1} 秒", "{seconds:.1} s"),
+                false,
+            )
+        })
     };
     div()
         .id(("tool-entry", index))
@@ -189,9 +198,9 @@ pub(super) fn tool_row(
                         .px_2()
                         .py_1()
                         .child(if retry {
-                            "重试读取结果"
+                            tr("重试读取结果")
                         } else {
-                            "读取已保存结果"
+                            tr("读取已保存结果")
                         })
                         .on_click(move |_, _, app| {
                             let _ = weak_retry.update(app, |this, cx| {
@@ -257,20 +266,20 @@ fn badge(value: impl Into<SharedString>, error: bool) -> Div {
 
 fn tool_title(tool: &Tool) -> SharedString {
     let label = match tool.name.as_ref() {
-        "terminal" | "execute_code" if tool.done => "已运行",
-        "terminal" | "execute_code" => "正在运行",
-        "skill_view" if tool.done => "已加载技能",
-        "skill_view" => "正在加载技能",
-        "vision_analyze" if tool.done => "已分析图片",
-        "vision_analyze" => "正在分析图片",
-        "read_file" if tool.done => "已读取文件",
-        "read_file" => "正在读取文件",
-        "list_files" if tool.done => "已查看目录",
-        "list_files" => "正在查看目录",
-        "file_search" | "search_files" if tool.done => "已搜索文件",
-        "file_search" | "search_files" => "正在搜索文件",
-        "web_search" if tool.done => "已搜索网页",
-        "web_search" => "正在搜索网页",
+        "terminal" | "execute_code" if tool.done => tr("已运行"),
+        "terminal" | "execute_code" => tr("正在运行"),
+        "skill_view" if tool.done => tr("已加载技能"),
+        "skill_view" => tr("正在加载技能"),
+        "vision_analyze" if tool.done => tr("已分析图片"),
+        "vision_analyze" => tr("正在分析图片"),
+        "read_file" if tool.done => tr("已读取文件"),
+        "read_file" => tr("正在读取文件"),
+        "list_files" if tool.done => tr("已查看目录"),
+        "list_files" => tr("正在查看目录"),
+        "file_search" | "search_files" if tool.done => tr("已搜索文件"),
+        "file_search" | "search_files" => tr("正在搜索文件"),
+        "web_search" if tool.done => tr("已搜索网页"),
+        "web_search" => tr("正在搜索网页"),
         other => other,
     };
     if tool_group(tool) == Some(ToolGroup::Commands) {
@@ -333,15 +342,18 @@ fn tool_details(tool: Tool, fetch: Option<FetchState>) -> Div {
                 } else if stdout.is_empty() {
                     stderr.to_owned()
                 } else {
-                    format!("{stdout}\n\n标准错误\n{stderr}")
+                    crate::i18n::format_text!(
+                        "{stdout}\n\n标准错误\n{stderr}",
+                        "{stdout}\n\nStandard error\n{stderr}"
+                    )
                 }
                 .into(),
             )
         })
         .unwrap_or_else(|| tool.output.clone());
     let pending = match fetch {
-        Some(FetchState::Loading(_)) => Some("正在读取工具结果…".into()),
-        Some(FetchState::Empty) => Some("历史记录没有返回工具结果".into()),
+        Some(FetchState::Loading(_)) => Some(tr("正在读取工具结果…").into()),
+        Some(FetchState::Empty) => Some(tr("历史记录没有返回工具结果").into()),
         Some(FetchState::Failed(error)) => Some(error),
         None => None,
     };
@@ -358,7 +370,7 @@ fn tool_details(tool: Tool, fetch: Option<FetchState>) -> Div {
         .flex_col()
         .when(!tool.args.is_empty(), |card| {
             card.child(tool_section(
-                "参数",
+                tr("参数"),
                 "copy-args",
                 param_body,
                 tool.args,
@@ -367,7 +379,7 @@ fn tool_details(tool: Tool, fetch: Option<FetchState>) -> Div {
         })
         .when(!tool.diff.is_empty(), |card| {
             card.child(tool_section(
-                "变更",
+                tr("变更"),
                 "copy-diff",
                 tool.diff.clone(),
                 tool.diff,
@@ -376,7 +388,7 @@ fn tool_details(tool: Tool, fetch: Option<FetchState>) -> Div {
         })
         .when(!tool.output.is_empty(), |card| {
             card.child(tool_section(
-                "结果",
+                tr("结果"),
                 "copy-result",
                 output,
                 tool.output,
@@ -425,7 +437,7 @@ fn tool_section(
                 .child(div().flex_1().child(label))
                 .children(exit.map(|code| badge(format!("exit {code}"), code != 0)))
                 .child(
-                    icon_button(copy_id, crate::icons::COPY, "复制完整内容")
+                    icon_button(copy_id, crate::icons::COPY, tr("复制完整内容"))
                         .size(px(20.))
                         .on_click(move |_, _, app| {
                             app.write_to_clipboard(ClipboardItem::new_string(raw.to_string()))
@@ -518,7 +530,7 @@ impl Desktop {
                         desktop.tool_history.results.insert(key, FetchState::Failed(error.to_string().into()));
                     }
                     _ => {
-                        desktop.tool_history.results.insert(key, FetchState::Failed("读取工具结果超时".into()));
+                        desktop.tool_history.results.insert(key, FetchState::Failed(tr("读取工具结果超时").into()));
                     }
                 }
                 cx.notify();

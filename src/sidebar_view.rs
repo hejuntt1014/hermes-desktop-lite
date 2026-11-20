@@ -1,3 +1,5 @@
+use crate::i18n::text as tr;
+
 use gpui::{
     Anchor, AnyElement, AppContext, Context, Div, Focusable, IntoElement, Render, SharedString,
     Window, div, prelude::*, px, rgb,
@@ -78,9 +80,9 @@ impl Desktop {
                             .text_size(px(13.))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .child(if self.archived_only {
-                                "已归档"
+                                tr("已归档")
                             } else {
-                                "会话"
+                                tr("会话")
                             }),
                     )
                     .child(div().flex_1())
@@ -94,9 +96,9 @@ impl Desktop {
                                 icons::ARCHIVE
                             },
                             if self.archived_only {
-                                "返回会话"
+                                tr("返回会话")
                             } else {
-                                "查看已归档会话"
+                                tr("查看已归档会话")
                             },
                         )
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -130,7 +132,7 @@ impl Desktop {
                                     .truncate()
                                     .text_size(px(13.))
                                     .text_color(rgb(SECONDARY))
-                                    .child("新建会话"),
+                                    .child(tr("新建会话")),
                             )
                             .child(
                                 div().flex().flex_none().gap(px(3.)).children(
@@ -191,14 +193,20 @@ impl Desktop {
                                 ),
                             )
                             .children(has_query.then(|| {
-                                icon_button("clear-sidebar-search", icons::TAB_CLOSE, "清除搜索")
-                                    .size(px(21.))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                icon_button(
+                                    "clear-sidebar-search",
+                                    icons::TAB_CLOSE,
+                                    tr("清除搜索"),
+                                )
+                                .size(px(21.))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.search.update(cx, |input, cx| {
                                             input.replace_all("", window, cx);
                                             input.focus(window, cx);
                                         });
-                                    }))
+                                    },
+                                ))
                             })),
                     ),
             )
@@ -222,7 +230,10 @@ impl Desktop {
             .rounded(px(6.))
             .bg(rgb(0xe9eef3))
             .hover(|button| button.bg(rgb(0xe1e8ef)))
-            .tooltip(format!("切换 Profile · {label}"))
+            .tooltip(crate::i18n::format_text!(
+                "切换 Profile · {label}",
+                "Switch profile · {label}"
+            ))
             .child(
                 div()
                     .flex()
@@ -247,7 +258,7 @@ impl Desktop {
                     .child(svg_symbol(icons::CHEVRON_DOWN, 11., MUTED).flex_none()),
             )
             .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
-                menu = menu.min_w(px(184.)).label("切换 Profile");
+                menu = menu.min_w(px(184.)).label(tr("切换 Profile"));
                 for profile in &profiles {
                     let target = desktop.clone();
                     let name = profile.name.clone();
@@ -286,14 +297,14 @@ impl Desktop {
                 menu.separator()
                     .item(tab_view::menu_item(
                         &desktop,
-                        "管理配置档案…",
+                        tr("管理配置档案…"),
                         icons::PROFILE_CARD,
                         connected,
                         |this, window, cx| this.open_profile_editor(window, cx),
                     ))
                     .item(tab_view::menu_item(
                         &desktop,
-                        "刷新 Profile 列表",
+                        tr("刷新 Profile 列表"),
                         icons::REFRESH,
                         connected,
                         |this, window, cx| this.load_profiles(window, cx),
@@ -459,7 +470,7 @@ impl Desktop {
                                     .compact()
                                     .size(px(21.))
                                     .p_0()
-                                    .tooltip("会话操作")
+                                    .tooltip(tr("会话操作"))
                                     .child(
                                         svg_symbol(icons::KEBAB, 14., MUTED)
                                             .invisible()
@@ -538,9 +549,9 @@ fn session_age(timestamp: i64, now: i64) -> String {
         return String::new();
     }
     match now.saturating_sub(timestamp).max(0) {
-        0..=59 => "刚刚".into(),
-        n if n < 3_600 => format!("{}分", n / 60),
-        n if n < 86_400 => format!("{}小时", n / 3_600),
-        n => format!("{}天", n / 86_400),
+        0..=59 => tr("刚刚").into(),
+        n if n < 3_600 => crate::i18n::format_text!("{}分", "{} min", n / 60),
+        n if n < 86_400 => crate::i18n::format_text!("{}小时", "{} hr", n / 3_600),
+        n => crate::i18n::format_text!("{}天", "{} days", n / 86_400),
     }
 }
