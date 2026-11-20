@@ -53,6 +53,10 @@ impl fmt::Display for HttpFailure {
 
 impl std::error::Error for HttpFailure {}
 
+pub(crate) fn missing_history_endpoint(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<HttpFailure>().is_some_and(HttpFailure::missing_endpoint)
+}
+
 impl HttpFailure {
     fn missing_endpoint(&self) -> bool {
         self.status == StatusCode::NOT_FOUND
@@ -355,6 +359,28 @@ impl Gateway {
         body: Option<Value>,
     ) -> Result<Value> {
         let response = self.api_request(method, path, params, body).await?;
+        Self::api_response(response).await
+    }
+
+    pub(crate) async fn model_options(&self, profile: &str, refresh: bool) -> Result<Value> {
+        let mut request = self
+            .http
+            .get(self.endpoint("api/model/options"))
+            .query(&[("explicit_only", true), ("refresh", refresh)]);
+        let profile = Some(profile).filter(|profile| !profile.is_empty());
+        if let Some(profile) = profile {
+            request = request.query(&[("profile", profile)]);
+        }
+        if refresh {
+            // Live probes can run sequentially across multiple providers.
+            request = request.timeout(Duration::from_secs(120));
+        }
+        let response = self
+            .authorize(request, profile)
+            .await?
+            .send()
+            .await
+            .map_err(|error| error.without_url())?;
         Self::api_response(response).await
     }
 

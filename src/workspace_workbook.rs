@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -9,7 +11,7 @@ use anyhow::{Context as _, Result, bail};
 use calamine::{Data, DataRef, Reader, SheetType, SheetVisible, Xlsx};
 use gpui::{
     Div, FontWeight, ListHorizontalSizingBehavior, SharedString, UniformListScrollHandle, div,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 use gpui_component::scroll::Scrollbar;
 
@@ -201,7 +203,7 @@ pub(super) fn grid(sheet: Arc<Sheet>, scroll: &UniformListScrollHandle) -> Div {
                             .border_r_1()
                             .border_color(rgb(0xe0e6ee))
                             .text_size(px(11.))
-                            .text_color(rgb(0x768294))
+                            .text_color(ink(0x768294))
                             .child(if header {
                                 String::new()
                             } else {
@@ -264,7 +266,7 @@ pub(super) fn grid(sheet: Arc<Sheet>, scroll: &UniformListScrollHandle) -> Div {
                     .px_3()
                     .py_1()
                     .text_size(px(11.))
-                    .text_color(rgb(0x768294))
+                    .text_color(ink(0x768294))
                     .child(crate::i18n::format_text!(
                         "预览前 {count} 行、{columns} 列，下载可查看完整工作表", "Showing the first {count} rows and {columns} columns. Download the workbook to see the rest."
                     )),

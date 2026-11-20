@@ -1,8 +1,10 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use gpui::{
     AnyElement, Context, Div, Entity, FocusHandle, FontWeight, ListOffset, Stateful, Subscription,
-    Window, div, prelude::*, px, rgb, rgba,
+    Window, div, prelude::*, px,
 };
 use gpui_component::{
     Sizable,
@@ -24,6 +26,7 @@ use crate::icons;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
     General,
+    Appearance,
     Chat,
     Layout,
     Connection,
@@ -34,6 +37,7 @@ impl SettingsPage {
     fn title(self) -> &'static str {
         match self {
             Self::General => tr("常规"),
+            Self::Appearance => tr("外观"),
             Self::Chat => tr("聊天显示"),
             Self::Layout => tr("窗口与布局"),
             Self::Connection => tr("网关连接"),
@@ -44,6 +48,7 @@ impl SettingsPage {
     fn icon(self) -> &'static str {
         match self {
             Self::General => icons::SETTINGS,
+            Self::Appearance => icons::SESSION_PALETTE,
             Self::Chat => icons::DISCUSSION,
             Self::Layout => icons::SIDEBAR_LEFT,
             Self::Connection => icons::WORLD,
@@ -104,7 +109,7 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.media.is_open() {
+        if self.media.is_open() || self.theme_saving() {
             return;
         }
         if !self.settings_open {
@@ -116,15 +121,21 @@ impl Desktop {
             self.settings_view.connection_error = None;
             self.settings_open = true;
         }
+        if page == SettingsPage::Appearance {
+            self.refresh_wallpaper_gallery(cx);
+        } else {
+            self.cancel_theme_edit(cx);
+        }
         self.settings_view.page = page;
         self.settings_view.focus.focus(window, cx);
         cx.notify();
     }
 
     pub(super) fn close_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.settings_open {
+        if !self.settings_open || self.theme_saving() {
             return;
         }
+        self.cancel_theme_edit(cx);
         self.settings_open = false;
         self.settings_view
             .previous_focus
@@ -230,6 +241,7 @@ impl Desktop {
             .children(
                 [
                     SettingsPage::General,
+                    SettingsPage::Appearance,
                     SettingsPage::Chat,
                     SettingsPage::Layout,
                     SettingsPage::Connection,
@@ -250,7 +262,7 @@ impl Desktop {
                         .gap_2()
                         .cursor_pointer()
                         .text_size(px(12.))
-                        .text_color(rgb(if selected { 0x264371 } else { 0x4d596d }))
+                        .text_color(ink(if selected { 0x264371 } else { 0x4d596d }))
                         .when(selected, |row| row.bg(rgb(0xe2e9f8)))
                         .hover(|row| row.bg(rgb(0xe7edf8)))
                         .child(svg_symbol(
@@ -266,6 +278,7 @@ impl Desktop {
             );
         let body = match page {
             SettingsPage::General => self.general_preferences(cx),
+            SettingsPage::Appearance => self.appearance_preferences(cx),
             SettingsPage::Chat => self.chat_preferences(cx),
             SettingsPage::Layout => self.layout_preferences(cx),
             SettingsPage::Connection => self.connection_preferences(cx),
@@ -280,10 +293,10 @@ impl Desktop {
             .px_4()
             .gap_2()
             .text_size(px(12.))
-            .text_color(rgb(0x64748b))
+            .text_color(ink(0x64748b))
             .child(tr("设置"))
             .child("›")
-            .child(div().flex_1().text_color(rgb(0x243247)).child(page.title()))
+            .child(div().flex_1().text_color(ink(0x243247)).child(page.title()))
             .child(
                 icon_button("settings-close", icons::TAB_CLOSE, tr("关闭设置")).on_click(
                     cx.listener(|this, _, window, cx| {
@@ -298,7 +311,11 @@ impl Desktop {
                 .absolute()
                 .inset_0()
                 .occlude()
-                .bg(rgba(0x22334a4d))
+                .bg(rgba(if page == SettingsPage::Appearance {
+                    0x22334a26
+                } else {
+                    0x22334a4d
+                }))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -328,7 +345,11 @@ impl Desktop {
                                 .child(heading)
                                 .child(
                                     div()
-                                        .id(("settings-scroll", page as usize))
+                                        .id((
+                                            "settings-scroll",
+                                            (page as usize) * 2
+                                                + usize::from(self.theme_editor.is_some()),
+                                        ))
                                         .flex_1()
                                         .min_h_0()
                                         .overflow_y_scroll()
@@ -543,7 +564,7 @@ impl Desktop {
                                 .w(px(32.))
                                 .text_right()
                                 .text_size(px(12.))
-                                .text_color(rgb(if enabled { 0x41608a } else { 0x77859a }))
+                                .text_color(ink(if enabled { 0x41608a } else { 0x77859a }))
                                 .child(format!(
                                     "{}%",
                                     self.settings.display.sidebar_transparency()
@@ -578,7 +599,7 @@ impl Desktop {
                 None,
                 div()
                     .text_size(px(12.))
-                    .text_color(rgb(0x596980))
+                    .text_color(ink(0x596980))
                     .child(tr(self.status)),
             ))
             .child(
@@ -590,13 +611,13 @@ impl Desktop {
             .children(self.settings_view.connection_error.as_ref().map(|error| {
                 div()
                     .text_size(px(12.))
-                    .text_color(rgb(0xae413b))
+                    .text_color(ink(0xae413b))
                     .child(error.clone())
             }))
     }
 }
 
-fn setting_row(
+pub(super) fn setting_row(
     title: &'static str,
     description: Option<&'static str>,
     control: impl IntoElement,
@@ -620,13 +641,13 @@ fn setting_row(
                 .child(
                     div()
                         .text_size(px(13.))
-                        .text_color(rgb(0x29374a))
+                        .text_color(ink(0x29374a))
                         .child(title),
                 )
                 .children(description.map(|text| {
                     div()
                         .text_size(px(11.))
-                        .text_color(rgb(0x68768b))
+                        .text_color(ink(0x68768b))
                         .child(text)
                 })),
         )
@@ -667,9 +688,9 @@ where
                         .justify_center()
                         .cursor_pointer()
                         .text_size(px(11.))
-                        .text_color(rgb(0x485971))
+                        .text_color(ink(0x485971))
                         .when(value == selected, |part| {
-                            part.bg(rgb(0xffffff)).text_color(rgb(0x24457a))
+                            part.bg(rgb(0xffffff)).text_color(ink(0x24457a))
                         })
                         .hover(|part| part.bg(rgb(0xf7f9fc)))
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -714,10 +735,10 @@ fn shortcuts() -> Div {
                 label,
                 None,
                 div()
-                    .font_family(crate::style::CODE_FONT)
+                    .font_family(crate::theme::code_family())
                     .font_weight(FontWeight::MEDIUM)
                     .text_size(px(11.))
-                    .text_color(rgb(0x54657e))
+                    .text_color(ink(0x54657e))
                     .child(key),
             )
         }),

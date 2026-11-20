@@ -519,7 +519,7 @@ fn decode(url: &str, large: bool) -> Result<Arc<RenderImage>> {
     render_encoded_image(&bytes, width, height)
 }
 
-fn render_encoded_image(bytes: &[u8], width: u32, height: u32) -> Result<Arc<RenderImage>> {
+pub(crate) fn render_encoded_image(bytes: &[u8], width: u32, height: u32) -> Result<Arc<RenderImage>> {
     let format = image::guess_format(bytes).context(tr("图片格式无效"))?;
     Ok(render_raster(decode_raster(bytes, format)?, width, height))
 }
@@ -630,7 +630,7 @@ pub(crate) fn is_image_file(path: &Path) -> bool {
         })
 }
 
-fn read_local_image(path: &Path) -> Result<Vec<u8>> {
+pub(crate) fn read_local_image(path: &Path) -> Result<Vec<u8>> {
     let file = File::open(path).context(tr("无法打开图片"))?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {

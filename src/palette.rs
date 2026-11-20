@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -7,7 +9,7 @@ use std::{
 
 use gpui::{
     Context, Div, Entity, EntityInputHandler, FocusHandle, ScrollStrategy, SharedString, Stateful,
-    Task, UniformListScrollHandle, Window, div, prelude::*, px, rgb, uniform_list,
+    Task, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use gpui_component::input::{Input, InputState};
 
@@ -531,7 +533,7 @@ impl Desktop {
                 let row = desktop.palette.rows.get(index)?;
                 if let ListRow::Header(label) = row {
                     return Some(div().id(("palette-section", index)).h(px(ROW_HEIGHT)).flex().items_end()
-                        .px_2().pb(px(4.)).text_size(px(11.)).text_color(rgb(0x2457b4)).child(*label));
+                        .px_2().pb(px(4.)).text_size(px(11.)).text_color(ink(0x2457b4)).child(*label));
                 }
                 let ListRow::Entry(entry) = row else { return None };
                 let active = desktop.palette.active == Some(index);
@@ -549,13 +551,13 @@ impl Desktop {
                     .rounded(px(3.)).px_2().flex().items_center().gap_2().cursor_pointer()
                     .bg(rgb(if active { 0xe7eefc } else { 0xfbfcfe }))
                     .hover(|style| style.bg(rgb(0xe9effa)))
-                    .text_size(px(12.)).text_color(rgb(0x273447))
+                    .text_size(px(12.)).text_color(ink(0x273447))
                     .child(super::view::svg_symbol(icon, 13., if current { 0x185aff } else { 0x627087 }))
                     .child(div().min_w_0().flex_1().truncate().child(title))
                     .when(!secondary.is_empty(), |item| item.child(div().min_w_0().max_w(px(210.))
-                        .truncate().text_size(px(11.)).text_color(rgb(0x677487)).child(secondary)))
+                        .truncate().text_size(px(11.)).text_color(ink(0x677487)).child(secondary)))
                     .when(!suffix.is_empty(), |item| item.child(div().flex_none().text_size(px(10.))
-                        .text_color(rgb(0x65758b)).child(suffix)))
+                        .text_color(ink(0x65758b)).child(suffix)))
                     .on_click(move |_, window, app| {
                         let _ = weak.update(app, |this, cx| this.choose_palette(entry.clone(), window, cx));
                     }))
@@ -622,7 +624,7 @@ impl Desktop {
                                 .px_4()
                                 .py_2()
                                 .text_size(px(11.))
-                                .text_color(rgb(0x697586))
+                                .text_color(ink(0x697586))
                                 .child(status)
                         })),
                 ),

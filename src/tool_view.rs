@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -7,7 +9,7 @@ use std::{
 
 use gpui::{
     AnyElement, App, ClipboardItem, Context, Div, Entity, SharedString, Stateful, div, prelude::*,
-    px, rgb,
+    px,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -15,7 +17,7 @@ use uuid::Uuid;
 use crate::{
     icons,
     session::{Row, Tool, compact_preview},
-    style::{CODE_FONT, MESSAGE_INSET, MUTED, SCAFFOLD_INK},
+    style::{MESSAGE_INSET, MUTED, SCAFFOLD_INK},
 };
 
 use super::{
@@ -193,7 +195,7 @@ pub(super) fn tool_row(
                     div()
                         .id("read-tool-result")
                         .text_size(px(11.))
-                        .text_color(rgb(0x2459a9))
+                        .text_color(ink(0x2459a9))
                         .cursor_pointer()
                         .px_2()
                         .py_1()
@@ -231,9 +233,9 @@ fn disclosure(
         .rounded(px(3.))
         .text_size(px(12.))
         .line_height(px(16.))
-        .text_color(rgb(SCAFFOLD_INK))
+        .text_color(ink(SCAFFOLD_INK))
         .cursor_pointer()
-        .hover(|row| row.text_color(rgb(MUTED)))
+        .hover(|row| row.text_color(ink(MUTED)))
         .child(svg_symbol(icon, 13., SCAFFOLD_INK).flex_none())
         .child(div().min_w_0().truncate().child(title))
         .child(
@@ -260,7 +262,7 @@ fn badge(value: impl Into<SharedString>, error: bool) -> Div {
     div()
         .flex_none()
         .text_size(px(10.))
-        .text_color(rgb(if error { 0xaf3e35 } else { MUTED }))
+        .text_color(ink(if error { 0xaf3e35 } else { MUTED }))
         .child(value.into())
 }
 
@@ -400,7 +402,7 @@ fn tool_details(tool: Tool, fetch: Option<FetchState>) -> Div {
                 .px_2()
                 .py_1()
                 .text_size(px(11.))
-                .text_color(rgb(0x637286))
+                .text_color(ink(0x637286))
                 .child(text)
         }))
 }
@@ -433,7 +435,7 @@ fn tool_section(
                 .h(px(23.))
                 .bg(rgb(0xf0f4f9))
                 .text_size(px(10.))
-                .text_color(rgb(0x687589))
+                .text_color(ink(0x687589))
                 .child(div().flex_1().child(label))
                 .children(exit.map(|code| badge(format!("exit {code}"), code != 0)))
                 .child(
@@ -451,10 +453,10 @@ fn tool_section(
                 .overflow_scroll()
                 .px_2()
                 .py_1()
-                .font_family(CODE_FONT)
+                .font_family(crate::theme::code_family())
                 .text_size(px(12.))
                 .line_height(px(18.))
-                .text_color(rgb(0x354153))
+                .text_color(ink(0x354153))
                 .child(shown),
         )
 }

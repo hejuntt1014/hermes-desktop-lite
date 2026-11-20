@@ -1,10 +1,12 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::{ops::Range, sync::Arc, time::Duration};
 
 use gpui::{
     Context, Div, Entity, EntityInputHandler, FocusHandle, Focusable, HighlightStyle, ListOffset,
-    SharedString, StyledText, Task, Window, div, prelude::*, px, rgb,
+    SharedString, StyledText, Task, Window, div, prelude::*, px,
 };
 use gpui_component::input::{Input, InputState, SelectAll};
 use markdown::{ParseOptions, mdast::Node, to_mdast};
@@ -37,6 +39,8 @@ struct Hit {
 }
 
 impl TranscriptFind {
+    pub(super) fn searching(&self) -> bool { self.open && !self.query.is_empty() }
+
     pub fn new(input: Entity<InputState>) -> Self {
         Self {
             input,
@@ -119,6 +123,7 @@ impl Desktop {
         find.job = None;
         find.hits.clear();
         find.active = 0;
+        if self.transcript_find.searching() { self.older_history(cx); }
         self.schedule_transcript_find(true, cx);
         cx.notify();
     }
@@ -307,7 +312,7 @@ impl Desktop {
                                     .min_w(px(33.))
                                     .text_center()
                                     .text_size(px(11.))
-                                    .text_color(rgb(0x656f7e))
+                                    .text_color(ink(0x656f7e))
                                     .child(count)
                             }))
                             .child(
@@ -349,7 +354,7 @@ impl Desktop {
                             .border_color(rgb(0xe7eaf0))
                             .overflow_hidden()
                             .text_size(px(11.))
-                            .text_color(rgb(0x5d6773))
+                            .text_color(ink(0x5d6773))
                             .truncate()
                             .child(preview)
                     })),

@@ -1,8 +1,8 @@
+use crate::theme::{ink, rgba};
+
 use crate::i18n::text as tr;
 
-use gpui::{
-    Context, Div, EntityInputHandler, FocusHandle, Stateful, Window, div, prelude::*, px, rgb, rgba,
-};
+use gpui::{Context, Div, EntityInputHandler, FocusHandle, Stateful, Window, div, prelude::*, px};
 use gpui_component::{Sizable, input::Input};
 use serde_json::json;
 use uuid::Uuid;
@@ -205,7 +205,7 @@ impl Desktop {
                                         .flex_1()
                                         .text_size(px(15.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(rgb(INK))
+                                        .text_color(ink(INK))
                                         .child(tr("重命名会话")),
                                 )
                                 .child(
@@ -240,7 +240,7 @@ impl Desktop {
             .children(dialog.error.clone().map(|error| {
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(0xa0443b))
+                    .text_color(ink(0xa0443b))
                     .child(error)
             }))
             .child(

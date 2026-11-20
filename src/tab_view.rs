@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::rc::Rc;
@@ -10,7 +12,7 @@ use crate::{
 };
 use gpui::{
     AnyView, App, AppContext, ClipboardItem, Context, Div, Render, SharedString, WeakEntity,
-    Window, div, prelude::*, px, rgb,
+    Window, div, prelude::*, px,
 };
 use gpui_component::{
     Icon,
@@ -65,13 +67,13 @@ impl Render for ChatTabDrag {
             .shadow_sm()
             .font_family("Microsoft YaHei UI")
             .text_size(px(12.))
-            .text_color(rgb(INK))
+            .text_color(ink(INK))
             .gap_1()
             .child(div().flex_1().truncate().child(self.title.clone()))
             .children(self.profile.clone().map(|profile| {
                 div()
                     .text_size(px(10.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(profile)
             }))
     }
@@ -97,7 +99,7 @@ pub(super) fn menu_item(
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(symbol(glyph, 13.)),
             )
             .child(label)
@@ -354,8 +356,10 @@ fn appearance_submenu(
                                         })
                                         .border_1()
                                         .border_color(rgb(if current { fill } else { 0xffffff }))
-                                        .hover(|style| style.border_color(rgb(fill)))
-                                        .child(div().size(px(21.)).rounded_full().bg(rgb(fill)))
+                                        .hover(|style| style.border_color(gpui::rgb(fill)))
+                                        .child(
+                                            div().size(px(21.)).rounded_full().bg(gpui::rgb(fill)),
+                                        )
                                         .on_click(move |_, window, cx| {
                                             cx.stop_propagation();
                                             pick(Some(color), window, cx)
@@ -374,9 +378,9 @@ fn appearance_submenu(
                                 .justify_center()
                                 .gap_1()
                                 .text_size(px(12.))
-                                .text_color(rgb(MUTED))
+                                .text_color(ink(MUTED))
                                 .cursor_pointer()
-                                .hover(|style| style.bg(rgb(0xe8eef9)).text_color(rgb(INK)))
+                                .hover(|style| style.bg(rgb(0xe8eef9)).text_color(ink(INK)))
                                 .child(svg_symbol(icons::NO_COLOR, 13., MUTED))
                                 .child(tr("无颜色"))
                                 .on_click(move |_, window, cx| {
@@ -694,7 +698,7 @@ impl Desktop {
                 .when(active, |tab| {
                     tab.bg(rgb(SURFACE)).border_b_2().border_color(rgb(ACCENT))
                 })
-                .text_color(rgb(if active { INK } else { MUTED }))
+                .text_color(ink(if active { INK } else { MUTED }))
                 .hover(|style| style.bg(rgb(0xf2f4f8)))
                 .aria_label(tooltip.clone())
                 .tooltip(move |window, cx| {
@@ -757,7 +761,7 @@ impl Desktop {
                         .flex_1()
                         .truncate()
                         .text_size(px(12.))
-                        .text_color(rgb(title_color))
+                        .text_color(ink(title_color))
                         .font_weight(if active {
                             gpui::FontWeight::MEDIUM
                         } else {
@@ -775,7 +779,7 @@ impl Desktop {
                             .rounded(px(4.))
                             .bg(rgb(0xf0f3f5))
                             .text_size(px(10.))
-                            .text_color(rgb(0x62727b))
+                            .text_color(ink(0x62727b))
                             .child(profile_badge),
                     )
                 })

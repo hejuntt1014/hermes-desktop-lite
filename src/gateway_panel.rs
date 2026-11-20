@@ -1,9 +1,11 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use anyhow::{Result, bail};
 use gpui::{
     Anchor, AnyElement, Context, Div, FontWeight, IntoElement, SharedString, Task, Window, div,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 use gpui_component::{
     button::{Button, ButtonVariants},
@@ -17,7 +19,7 @@ use crate::{
     icons,
     local_gateway::LocalTickets,
     settings::{GatewayMode, RemoteAuth, Settings},
-    style::{ACCENT, CODE_FONT, INK, MUTED},
+    style::{ACCENT, INK, MUTED},
 };
 
 use super::{
@@ -371,7 +373,7 @@ impl Desktop {
                         .max_w(px(320.))
                         .text_size(px(13.))
                         .line_height(px(21.))
-                        .text_color(rgb(0x66718b))
+                        .text_color(ink(0x66718b))
                         .child(tr(
                             "在浏览器中使用网关用户名和密码登录。登录完成后，客户端会自动连接。",
                         )),
@@ -393,7 +395,7 @@ impl Desktop {
                                 .items_center()
                                 .gap(px(8.))
                                 .bg(rgb(0x3e53ad))
-                                .text_color(rgb(0xffffff))
+                                .text_color(ink(0xffffff))
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .cursor_pointer()
@@ -457,14 +459,14 @@ impl Desktop {
                                 .items_center()
                                 .gap_2()
                                 .text_size(px(13.))
-                                .text_color(rgb(INK))
+                                .text_color(ink(INK))
                                 .child(svg_symbol(icon, 15., MUTED))
                                 .child(div().flex_1().child(label))
                                 .when(selected, |row| {
-                                    row.child(div().text_color(rgb(ACCENT)).child("✓"))
+                                    row.child(div().text_color(ink(ACCENT)).child("✓"))
                                 }),
                         )
-                        .child(div().text_size(px(11.)).text_color(rgb(MUTED)).child(text))
+                        .child(div().text_size(px(11.)).text_color(ink(MUTED)).child(text))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if !busy {
                                 this.gateway_panel.mode = choice;
@@ -586,7 +588,7 @@ impl Desktop {
         .children(self.gateway_panel.feedback.clone().map(|status| {
             div()
                 .text_size(px(12.))
-                .text_color(rgb(0x26785e))
+                .text_color(ink(0x26785e))
                 .child(status)
         }))
     }
@@ -770,8 +772,8 @@ impl Desktop {
                             .overflow_y_scroll()
                             .text_size(px(11.))
                             .line_height(px(16.))
-                            .font_family(CODE_FONT)
-                            .text_color(rgb(MUTED))
+                            .font_family(crate::theme::code_family())
+                            .text_color(ink(MUTED))
                             .child(logs.unwrap_or_else(|| {
                                 if this.gateway_panel.diagnostics_job.is_some() {
                                     tr("正在读取…").into()
@@ -953,13 +955,13 @@ fn display_host(url: &url::Url) -> String {
 fn heading(label: &'static str) -> Div {
     div()
         .text_size(px(12.))
-        .text_color(rgb(INK))
+        .text_color(ink(INK))
         .font_weight(FontWeight::SEMIBOLD)
         .child(label)
 }
 
 fn note(label: &'static str) -> Div {
-    div().text_size(px(11.)).text_color(rgb(MUTED)).child(label)
+    div().text_size(px(11.)).text_color(ink(MUTED)).child(label)
 }
 
 fn field(label: &'static str, input: impl IntoElement) -> Div {
@@ -985,7 +987,7 @@ fn menu_button(
         .flex()
         .items_center()
         .text_size(px(12.))
-        .text_color(rgb(if selected { ACCENT } else { INK }))
+        .text_color(ink(if selected { ACCENT } else { INK }))
         .when(selected, |button| button.bg(rgb(0xeaf1fd)))
         .cursor_pointer()
         .hover(|button| button.bg(rgb(0xecf1f7)))
@@ -1007,14 +1009,14 @@ fn gateway_menu_row(
         .flex()
         .items_center()
         .text_size(px(12.))
-        .text_color(rgb(INK))
+        .text_color(ink(INK))
         .when(selected, |row| row.bg(rgb(0xeaf1fd)))
         .cursor_pointer()
         .hover(|row| row.bg(rgb(0xecf1f7)))
         .child(svg_symbol(icon, 13., MUTED).flex_none())
         .child(div().min_w_0().flex_1().truncate().child(label.into()))
         .when(selected, |row| {
-            row.child(div().text_color(rgb(ACCENT)).child("✓"))
+            row.child(div().text_color(ink(ACCENT)).child("✓"))
         })
 }
 
@@ -1031,7 +1033,7 @@ fn status_button(
             .gap_1()
             .max_w(px(198.))
             .text_size(px(11.))
-            .text_color(rgb(MUTED))
+            .text_color(ink(MUTED))
             .child(svg_symbol(icon, 13., MUTED))
             .child(div().min_w_0().truncate().child(label.into()))
             .when(chevron, |row| {

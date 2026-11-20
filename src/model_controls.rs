@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 use super::{Call, Desktop, rpc_error};
 use crate::{
+    gateway::Gateway,
     session::string,
     settings::{LaunchOptions, ModelChoice, ModelPreference},
 };
@@ -48,6 +49,68 @@ impl CatalogModel {
 pub(super) struct MenuScope {
     profile: String,
     session: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct MenuRequest {
+    id: u64,
+    refresh: bool,
+}
+
+#[derive(Default)]
+struct MenuCatalogs {
+    entries: HashMap<MenuScope, CatalogState>,
+    pending: HashMap<MenuScope, MenuRequest>,
+    next_id: u64,
+}
+
+impl MenuCatalogs {
+    fn start(&mut self, scope: &MenuScope, refresh: bool) -> Option<MenuRequest> {
+        if self
+            .pending
+            .get(scope)
+            .is_some_and(|request| request.refresh || !refresh)
+        {
+            return None;
+        }
+        self.next_id = self.next_id.wrapping_add(1);
+        let request = MenuRequest {
+            id: self.next_id,
+            refresh,
+        };
+        self.pending.insert(scope.clone(), request);
+        Some(request)
+    }
+
+    fn is_pending(&self, scope: &MenuScope, request: MenuRequest) -> bool {
+        self.pending.get(scope) == Some(&request)
+    }
+
+    fn cancel(&mut self, scope: &MenuScope, request: MenuRequest) -> bool {
+        if !self.is_pending(scope, request) {
+            return false;
+        }
+        self.pending.remove(scope);
+        true
+    }
+
+    fn finish(&mut self, scope: &MenuScope, request: MenuRequest, result: Result<Catalog>) -> bool {
+        if !self.cancel(scope, request) {
+            return false;
+        }
+        match result {
+            Ok(catalog) => {
+                self.entries
+                    .insert(scope.clone(), CatalogState::Loaded(catalog));
+            }
+            Err(error) if !matches!(self.entries.get(scope), Some(CatalogState::Loaded(_))) => {
+                self.entries
+                    .insert(scope.clone(), CatalogState::Failed(error.to_string()));
+            }
+            Err(_) => {}
+        }
+        true
+    }
 }
 
 struct TierOptions {
@@ -106,8 +169,7 @@ pub(super) struct ModelControls {
     pub picker: Option<Picker>,
     pub inspected_model: Option<ModelChoice>,
     pub catalogs: HashMap<String, CatalogState>,
-    menu_catalogs: HashMap<MenuScope, Catalog>,
-    menu_requests: HashSet<MenuScope>,
+    menus: MenuCatalogs,
     tiers: HashMap<(String, ModelChoice), TierOptions>,
     pending_presets: HashMap<String, PendingPreset>,
     catalog_requests: HashSet<String>,
@@ -125,8 +187,7 @@ impl ModelControls {
             picker: None,
             inspected_model: None,
             catalogs: HashMap::new(),
-            menu_catalogs: HashMap::new(),
-            menu_requests: HashSet::new(),
+            menus: MenuCatalogs::default(),
             tiers: HashMap::new(),
             pending_presets: HashMap::new(),
             catalog_requests: HashSet::new(),
@@ -140,12 +201,18 @@ impl ModelControls {
 
     pub fn reset(&mut self) {
         let generation = self.catalog_generation.wrapping_add(1);
+        let menu_request_id = self.menus.next_id;
         *self = Self::new(self.search.clone());
         self.catalog_generation = generation;
+        self.menus.next_id = menu_request_id;
     }
 }
 
 impl Catalog {
+    async fn fetch(gateway: &Gateway, profile: &str, refresh: bool) -> Result<Self> {
+        Self::from_response(gateway.model_options(profile, refresh).await?)
+    }
+
     fn from_response(value: Value) -> Result<Self> {
         let providers = value["providers"]
             .as_array()
@@ -287,14 +354,18 @@ impl Desktop {
         if !refresh
             && self
                 .model_controls
-                .menu_catalogs
+                .menus
+                .entries
                 .get(&scope)
-                .is_some_and(|catalog| catalog.fetched_at.elapsed().as_secs() < 45)
+                .is_some_and(|state| {
+                    matches!(state, CatalogState::Loaded(catalog)
+                    if catalog.fetched_at.elapsed().as_secs() < 45)
+                })
         {
             self.load_model_tiers();
             return;
         }
-        if self.model_controls.menu_requests.insert(scope.clone()) {
+        if let Some(request) = self.model_controls.menus.start(&scope, refresh) {
             let mut params = json!({"explicit_only":true, "refresh":refresh});
             if !scope.profile.is_empty() {
                 params["profile"] = json!(scope.profile);
@@ -311,10 +382,9 @@ impl Desktop {
             if !self.call(
                 "model.options",
                 params,
-                Call::ModelOptions(scope.clone(), refresh),
+                Call::ModelOptions(scope.clone(), request),
             ) {
-                self.model_controls.menu_requests.remove(&scope);
-                self.request_catalog(refresh, refresh, cx);
+                self.fallback_model_options(scope, request, cx);
             }
         }
         self.load_model_tiers();
@@ -330,35 +400,112 @@ impl Desktop {
 
     pub(super) fn menu_catalog(&self) -> Option<&Catalog> {
         let scope = self.menu_scope();
-        self.model_controls.menu_catalogs.get(&scope).or_else(|| {
-            match self.model_controls.catalogs.get(&scope.profile) {
+        match self.model_controls.menus.entries.get(&scope) {
+            Some(CatalogState::Loaded(catalog)) => Some(catalog),
+            _ => match self.model_controls.catalogs.get(&scope.profile) {
                 Some(CatalogState::Loaded(catalog)) => Some(catalog),
                 _ => None,
-            }
-        })
+            },
+        }
     }
 
-    pub(super) fn cancel_model_options(&mut self, scope: &MenuScope) {
-        self.model_controls.menu_requests.remove(scope);
+    pub(super) fn model_menu_error(&self) -> Option<&str> {
+        let scope = self.menu_scope();
+        let menus = &self.model_controls.menus;
+        if menus.pending.contains_key(&scope) {
+            return None;
+        }
+        match menus.entries.get(&scope) {
+            Some(CatalogState::Failed(error)) => Some(error),
+            _ => None,
+        }
+    }
+
+    pub(super) fn model_refreshing(&self) -> bool {
+        self.model_controls
+            .menus
+            .pending
+            .get(&self.menu_scope())
+            .is_some_and(|request| request.refresh)
+    }
+
+    pub(super) fn cancel_model_options(&mut self, scope: &MenuScope, request: MenuRequest) {
+        self.model_controls.menus.cancel(scope, request);
     }
 
     pub(super) fn finish_model_options(
         &mut self,
         scope: MenuScope,
-        refresh: bool,
+        request: MenuRequest,
         result: &Value,
         error: Option<&Value>,
         cx: &mut Context<Self>,
     ) {
-        self.cancel_model_options(&scope);
-        if error.is_none()
-            && let Ok(catalog) = Catalog::from_response(result.clone())
-            && !catalog.models.is_empty()
-        {
-            self.model_controls.menu_catalogs.insert(scope, catalog);
-        } else if scope == self.menu_scope() {
-            self.request_catalog(refresh, refresh, cx);
+        if !self.model_controls.menus.is_pending(&scope, request) {
+            return;
         }
+        match Catalog::from_response(result.clone()) {
+            Ok(catalog) if error.is_none() && !catalog.models.is_empty() => {
+                self.publish_menu_catalog(scope, request, Ok(catalog), cx);
+            }
+            _ => self.fallback_model_options(scope, request, cx),
+        }
+    }
+
+    pub(super) fn fallback_model_options(
+        &mut self,
+        scope: MenuScope,
+        request: MenuRequest,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.model_controls.menus.is_pending(&scope, request) {
+            return;
+        }
+        let Some(gateway) = self.gateway.clone().filter(|_| self.out.is_some()) else {
+            self.publish_menu_catalog(scope, request, Err(anyhow::anyhow!(tr("未连接"))), cx);
+            return;
+        };
+        let profile = scope.profile.clone();
+        let read = self
+            .runtime
+            .spawn(async move { Catalog::fetch(&gateway, &profile, request.refresh).await });
+        cx.spawn(async move |view, cx| {
+            let result = read
+                .await
+                .context(tr("无法读取模型列表"))
+                .and_then(|result| result);
+            let _ = view.update(cx, |this, cx| {
+                this.publish_menu_catalog(scope, request, result, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn publish_menu_catalog(
+        &mut self,
+        scope: MenuScope,
+        request: MenuRequest,
+        result: Result<Catalog>,
+        cx: &mut Context<Self>,
+    ) {
+        let refresh_error = result
+            .as_ref()
+            .err()
+            .filter(|_| request.refresh && scope == self.menu_scope())
+            .map(ToString::to_string);
+        if !self.model_controls.menus.finish(&scope, request, result) {
+            return;
+        }
+        if let Some(error) = refresh_error {
+            self.banner = Some(
+                crate::i18n::format_text!(
+                    "无法刷新模型列表 · {error}",
+                    "Could not refresh models · {error}"
+                )
+                .into(),
+            );
+        }
+        cx.notify();
     }
 
     fn load_model_tiers(&mut self) {
@@ -528,22 +675,15 @@ impl Desktop {
             _ => true,
         };
         if refresh {
-            self.request_catalog(true, false, cx);
+            self.request_usage_catalog(profile, cx);
         }
     }
 
-    fn request_catalog(&mut self, reload: bool, refresh: bool, cx: &mut Context<Self>) {
+    fn request_usage_catalog(&mut self, profile: String, cx: &mut Context<Self>) {
         let Some(gateway) = self.gateway.clone().filter(|_| self.out.is_some()) else {
             return;
         };
-        let profile = self.model_profile();
-        if (!reload
-            && matches!(
-                self.model_controls.catalogs.get(&profile),
-                Some(CatalogState::Loaded(_))
-            ))
-            || !self.model_controls.catalog_requests.insert(profile.clone())
-        {
+        if !self.model_controls.catalog_requests.insert(profile.clone()) {
             return;
         }
         let generation = self.model_controls.catalog_generation;
@@ -557,19 +697,7 @@ impl Desktop {
         }
         let read = self.runtime.spawn({
             let profile = profile.clone();
-            async move {
-                let mut query = vec![("explicit_only", "1".to_owned())];
-                if !profile.is_empty() {
-                    query.push(("profile", profile));
-                }
-                if refresh {
-                    query.push(("refresh", "1".to_owned()));
-                }
-                let payload = gateway
-                    .api(reqwest::Method::GET, "api/model/options", &query, None)
-                    .await?;
-                Catalog::from_response(payload)
-            }
+            async move { Catalog::fetch(&gateway, &profile, false).await }
         });
         cx.spawn(async move |view, cx| {
             let result = read
@@ -588,26 +716,16 @@ impl Desktop {
                             .insert(profile, CatalogState::Loaded(catalog));
                     }
                     Err(error)
-                        if matches!(
+                        if !matches!(
                             this.model_controls.catalogs.get(&profile),
                             Some(CatalogState::Loaded(_))
                         ) =>
                     {
-                        if refresh {
-                            this.banner = Some(
-                                crate::i18n::format_text!(
-                                    "无法刷新模型列表 · {error}",
-                                    "Could not refresh models · {error}"
-                                )
-                                .into(),
-                            );
-                        }
-                    }
-                    Err(error) => {
                         this.model_controls
                             .catalogs
                             .insert(profile, CatalogState::Failed(error.to_string()));
                     }
+                    Err(_) => {}
                 }
                 cx.notify();
             });
@@ -1014,4 +1132,108 @@ impl Desktop {
 
 fn preference_key(profile: &str, model: &ModelChoice) -> String {
     format!("{profile}\n{}\n{}", model.provider, model.id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::RemoteAuth;
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+        net::TcpListener,
+    };
+
+    fn scope(session: &str) -> MenuScope {
+        MenuScope {
+            profile: "work".to_owned(),
+            session: Some(session.to_owned()),
+        }
+    }
+
+    fn inventory(model: &str) -> Value {
+        json!({
+            "providers": [{
+                "slug": "openai-codex",
+                "models": [model],
+            }],
+        })
+    }
+
+    fn model_id<'a>(menus: &'a MenuCatalogs, scope: &MenuScope) -> &'a str {
+        let Some(CatalogState::Loaded(catalog)) = menus.entries.get(scope) else {
+            panic!("expected a loaded menu");
+        };
+        &catalog.models[0].choice.id
+    }
+
+    #[test]
+    fn manual_refresh_takes_precedence_over_an_in_progress_menu_read() {
+        let scope = scope("chat");
+        let mut menus = MenuCatalogs::default();
+        let reading = menus.start(&scope, false).unwrap();
+        let refresh = menus.start(&scope, true).unwrap();
+        assert!(menus.start(&scope, true).is_none());
+        assert!(menus.start(&scope, false).is_none());
+
+        assert!(menus.finish(&scope, refresh, Catalog::from_response(inventory("new"))));
+        assert!(!menus.finish(&scope, reading, Catalog::from_response(inventory("old"))));
+        assert_eq!(model_id(&menus, &scope), "new");
+    }
+
+    #[tokio::test]
+    async fn http_refresh_replaces_the_catalog_for_the_originating_menu() -> Result<()> {
+        let mut menus = MenuCatalogs::default();
+        let chat = scope("chat");
+        let other = scope("other");
+        for scope in [&chat, &other] {
+            let request = menus.start(scope, false).unwrap();
+            menus.finish(scope, request, Catalog::from_response(inventory("old")));
+        }
+        let refresh = menus.start(&chat, true).unwrap();
+        assert_eq!(model_id(&menus, &chat), "old");
+
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let gateway = Gateway::new(
+            &listener.local_addr()?.to_string(),
+            RemoteAuth::Token,
+            String::new(),
+        )?;
+        let serve = async {
+            let (socket, _) = listener.accept().await?;
+            let mut socket = BufReader::new(socket);
+            let mut line = String::new();
+            socket.read_line(&mut line).await?;
+            let request = line.split_whitespace().nth(1).unwrap();
+            let (path, query) = request.split_once('?').unwrap();
+            assert_eq!(path, "/api/model/options");
+            let query: HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes()).collect();
+            assert_eq!(query["profile"], "work");
+            assert_eq!(query["explicit_only"], "true");
+            assert_eq!(query["refresh"], "true");
+            loop {
+                line.clear();
+                if socket.read_line(&mut line).await? == 0 || line == "\r\n" {
+                    break;
+                }
+            }
+            let body = inventory("new").to_string();
+            let reply = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            socket.get_mut().write_all(reply.as_bytes()).await
+        };
+        let (served, fetched) = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(
+                serve,
+                Catalog::fetch(&gateway, &chat.profile, refresh.refresh)
+            )
+        })
+        .await?;
+        served?;
+        assert!(menus.finish(&chat, refresh, Ok(fetched?)));
+        assert_eq!(model_id(&menus, &chat), "new");
+        assert_eq!(model_id(&menus, &other), "old");
+        Ok(())
+    }
 }

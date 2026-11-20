@@ -40,7 +40,7 @@ pub fn conversation_font() -> Font {
 }
 
 fn ui_font(cjk: &str, fallbacks: &OnceLock<FontFallbacks>) -> Font {
-    let mut font = font(UI_FONT);
+    let mut font = font(crate::theme::interface_family());
     if cfg!(target_os = "windows") {
         font.fallbacks = Some(
             fallbacks

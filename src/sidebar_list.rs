@@ -1,3 +1,5 @@
+use crate::theme::ink;
+
 use crate::i18n::text as tr;
 
 use std::collections::{HashMap, HashSet};
@@ -5,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::{Local, NaiveDate, Utc};
 use gpui::{
     Context, Div, IntoElement, ListAlignment, ListOffset, ListSizingBehavior, ListState, div, list,
-    prelude::*, px, rgb,
+    prelude::*, px,
 };
 use gpui_component::scroll::Scrollbar;
 
@@ -202,7 +204,7 @@ impl Desktop {
                     .px_2()
                     .text_size(px(11.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(rgb(ACCENT))
+                    .text_color(ink(ACCENT))
                     .child(svg_symbol(
                         if *pinned {
                             icons::PIN
@@ -220,7 +222,7 @@ impl Desktop {
                     .items_center()
                     .px_2()
                     .text_size(px(11.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(label.clone())
                     .into_any_element(),
                 Item::Session { row, depth, last } => desktop.session_row(
@@ -238,7 +240,7 @@ impl Desktop {
                     .pr_2()
                     .text_size(px(11.))
                     .line_height(px(16.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(tr("Shift + 单击置顶 · 拖动排序"))
                     .into_any_element(),
                 Item::EmptySessions => div()

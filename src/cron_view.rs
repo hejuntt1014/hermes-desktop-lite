@@ -1,9 +1,9 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use chrono::Utc;
-use gpui::{
-    Context, Div, IntoElement, SharedString, Stateful, Window, div, prelude::*, px, rgb, rgba,
-};
+use gpui::{Context, Div, IntoElement, SharedString, Stateful, Window, div, prelude::*, px};
 use gpui_component::{
     Sizable,
     input::{Input, Textarea},
@@ -33,7 +33,7 @@ impl Desktop {
                 .rounded(px(4.))
                 .text_size(px(11.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(rgb(ACCENT))
+                .text_color(ink(ACCENT))
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(super::sidebar_view::SIDEBAR_HOVER)))
                 .child(svg_symbol(icons::CLOCK, 13., ACCENT))
@@ -131,14 +131,14 @@ impl Desktop {
                     .flex_1()
                     .min_w_0()
                     .truncate()
-                    .text_color(rgb(SECONDARY))
+                    .text_color(ink(SECONDARY))
                     .child(job.title().to_owned()),
             )
             .child(
                 div()
                     .flex_none()
                     .text_size(px(10.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(state),
             )
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -243,7 +243,7 @@ impl Desktop {
                                         .rounded(px(4.))
                                         .bg(rgb(0xedf1f7))
                                         .text_size(px(10.))
-                                        .text_color(rgb(MUTED))
+                                        .text_color(ink(MUTED))
                                         .child(self.profile_label(&self.cron.profile)),
                                 )
                                 .child(div().flex_1())
@@ -359,7 +359,7 @@ impl Desktop {
                             .flex_none()
                             .text_size(px(16.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(INK))
+                            .text_color(ink(INK))
                             .child(job.title().to_owned()),
                     )
                     .child(
@@ -427,7 +427,7 @@ impl Desktop {
                                     .pb_1()
                                     .text_size(px(11.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(rgb(MUTED))
+                                    .text_color(ink(MUTED))
                                     .child(tr("最近执行")),
                             )
                             .children(runs.and_then(|runs| runs.error.clone()).map(cron_error))
@@ -458,14 +458,14 @@ impl Desktop {
                                             .gap_2()
                                             .child(quiet(run.label.clone()).flex_none())
                                             .children(run.outcome.map(|(label, color)| {
-                                                quiet(label).flex_none().text_color(rgb(color))
+                                                quiet(label).flex_none().text_color(ink(color))
                                             }))
                                             .child(
                                                 div()
                                                     .min_w_0()
                                                     .flex_1()
                                                     .truncate()
-                                                    .text_color(rgb(SECONDARY))
+                                                    .text_color(ink(SECONDARY))
                                                     .text_size(px(11.))
                                                     .child(run.row.title.clone()),
                                             )
@@ -680,13 +680,13 @@ fn quiet(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(px(11.))
         .line_height(px(16.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .child(text.into())
 }
 
 fn cron_error(text: impl Into<SharedString>) -> Div {
     quiet(text)
-        .text_color(rgb(DANGER))
+        .text_color(ink(DANGER))
         .bg(rgb(0xfff3f2))
         .rounded(px(4.))
         .px_2()
@@ -705,7 +705,7 @@ fn detail(label: &'static str, text: impl Into<SharedString>) -> Div {
                 .min_w_0()
                 .text_size(px(12.))
                 .line_height(px(17.))
-                .text_color(rgb(SECONDARY))
+                .text_color(ink(SECONDARY))
                 .child(text.into()),
         )
 }

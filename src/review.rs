@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::sync::Arc;
@@ -5,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result, bail};
 use gpui::{
     ClipboardItem, Context, Div, FocusHandle, ListHorizontalSizingBehavior, SharedString,
-    UniformListScrollHandle, Window, div, prelude::*, px, rgb, uniform_list,
+    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use gpui_component::{scroll::Scrollbar, tooltip::Tooltip};
 use serde::Deserialize;
@@ -318,14 +320,14 @@ impl Desktop {
                     .min_w_0()
                     .truncate()
                     .text_size(px(11.))
-                    .text_color(rgb(0x2855a3))
+                    .text_color(ink(0x2855a3))
                     .child(source),
             )
             .children(review.base.as_ref().map(|base| {
                 div()
                     .font_family("Consolas")
                     .text_size(px(11.))
-                    .text_color(rgb(0x69778b))
+                    .text_color(ink(0x69778b))
                     .child(base.chars().take(20).collect::<String>())
             }))
             .child(
@@ -366,11 +368,11 @@ impl Desktop {
                             .items_center()
                             .justify_center()
                             .text_size(px(11.))
-                            .text_color(rgb(0x46586e))
+                            .text_color(ink(0x46586e))
                             .rounded(px(3.))
                             .cursor_pointer()
                             .when(mode == target, |tab| {
-                                tab.bg(rgb(0xffffff)).text_color(rgb(0x244578))
+                                tab.bg(rgb(0xffffff)).text_color(ink(0x244578))
                             })
                             .hover(|tab| tab.bg(rgb(0xf4f7fc)))
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -440,7 +442,7 @@ impl Desktop {
                                 .cursor_pointer()
                                 .rounded(px(3.))
                                 .text_size(px(12.))
-                                .text_color(rgb(0x344459))
+                                .text_color(ink(0x344459))
                                 .when(selected, |row| row.bg(rgb(0xe5eefb)))
                                 .hover(|row| row.bg(rgb(0xeaf0fa)))
                                 .tooltip(move |window, cx| {
@@ -451,7 +453,7 @@ impl Desktop {
                                         .font_family("Consolas")
                                         .w(px(13.))
                                         .flex_none()
-                                        .text_color(rgb(match file.status.as_str() {
+                                        .text_color(ink(match file.status.as_str() {
                                             "A" | "?" => 0x22845b,
                                             "D" => 0xb84245,
                                             _ => 0xa07527,
@@ -463,7 +465,7 @@ impl Desktop {
                                     row.child(
                                         div()
                                             .text_size(px(10.))
-                                            .text_color(rgb(0x6380a0))
+                                            .text_color(ink(0x6380a0))
                                             .child(tr("已暂存")),
                                     )
                                 })
@@ -564,7 +566,7 @@ impl Desktop {
                                 .px_3()
                                 .py_1()
                                 .text_size(px(11.))
-                                .text_color(rgb(0x68788b))
+                                .text_color(ink(0x68788b))
                                 .child(tr("预览仅显示前段差异，可复制全文")),
                         )
                     })
@@ -592,7 +594,7 @@ fn center(text: SharedString) -> Div {
         .justify_center()
         .px_3()
         .text_size(px(12.))
-        .text_color(rgb(0x69778b))
+        .text_color(ink(0x69778b))
         .child(text)
 }
 
@@ -612,10 +614,10 @@ fn diff_counts(added: u64, removed: u64) -> Div {
         .font_family("Consolas")
         .text_size(px(10.))
         .when(added > 0, |row| {
-            row.child(div().text_color(rgb(0x248351)).child(format!("+{added}")))
+            row.child(div().text_color(ink(0x248351)).child(format!("+{added}")))
         })
         .when(removed > 0, |row| {
-            row.child(div().text_color(rgb(0xb24245)).child(format!("−{removed}")))
+            row.child(div().text_color(ink(0xb24245)).child(format!("−{removed}")))
         })
 }
 
@@ -641,7 +643,7 @@ fn diff_row(row: &DiffRow) -> Div {
                 .pr_2()
                 .flex_none()
                 .text_right()
-                .text_color(rgb(0x8490a1))
+                .text_color(ink(0x8490a1))
                 .children(number.map(|value| value.to_string()))
         }))
         .child(
@@ -649,7 +651,7 @@ fn diff_row(row: &DiffRow) -> Div {
                 .pl_1()
                 .flex_none()
                 .whitespace_nowrap()
-                .text_color(rgb(foreground))
+                .text_color(ink(foreground))
                 .child(row.text.clone()),
         )
 }

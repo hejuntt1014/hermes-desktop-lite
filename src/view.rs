@@ -1,3 +1,5 @@
+use crate::theme::{ink, ink_alpha, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use std::sync::Arc;
@@ -10,8 +12,7 @@ use crate::{
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, Utc};
 use gpui::{
     AnyElement, ClipboardItem, Context, Div, ExternalPaths, Focusable, IntoElement,
-    ListSizingBehavior, ObjectFit, Render, SharedString, Window, div, list, prelude::*, px, rgb,
-    rgba,
+    ListSizingBehavior, ObjectFit, Render, SharedString, Window, div, list, prelude::*, px,
 };
 use gpui_component::{
     Sizable,
@@ -64,13 +65,13 @@ use crate::{
     media::{Message, is_image_file},
     session::{Prompt, Row, SessionTarget, Summary},
     style::{
-        ACCENT, CODE_FONT, CONVERSATION_INK, INK, MESSAGE_INSET, MUTED, PARAGRAPH_GAP, SECONDARY,
+        ACCENT, CONVERSATION_INK, INK, MESSAGE_INSET, MUTED, PARAGRAPH_GAP, SECONDARY,
         TRANSCRIPT_INSET, UI_TEXT_SIZE, conversation_font, interface_font,
     },
 };
 
 const LINE: u32 = 0xe4e7ed;
-const CANVAS: u32 = 0xfdfdfd;
+pub(super) const CANVAS: u32 = 0xfdfdfd;
 const RAIL: u32 = 0xfefefe;
 const SURFACE: u32 = 0xffffff;
 const SELECTED: u32 = 0xe2e9f7;
@@ -94,26 +95,30 @@ pub(super) fn control(
         .px_2()
         .rounded(px(5.))
         .text_size(px(12.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(SELECTED)).text_color(rgb(INK)))
+        .hover(|style| style.bg(rgb(SELECTED)).text_color(ink(INK)))
         .child(label.into())
 }
 
 pub(super) fn primary(id: &'static str, label: &'static str, enabled: bool) -> gpui::Stateful<Div> {
     control(id, label)
         .px_3()
-        .bg(rgb(if enabled { ACCENT } else { LINE }))
-        .text_color(rgb(if enabled { SURFACE } else { MUTED }))
+        .bg(if enabled {
+            crate::theme::primary()
+        } else {
+            rgb(LINE)
+        })
+        .text_color(ink(if enabled { SURFACE } else { MUTED }))
         .hover(move |style| {
             style
                 .bg(rgb(if enabled { 0x214ab0 } else { LINE }))
-                .text_color(rgb(if enabled { SURFACE } else { MUTED }))
+                .text_color(ink(if enabled { SURFACE } else { MUTED }))
         })
 }
 
 fn caption(label: &'static str) -> Div {
-    div().text_size(px(11.)).text_color(rgb(MUTED)).child(label)
+    div().text_size(px(11.)).text_color(ink(MUTED)).child(label)
 }
 
 pub(super) fn panel() -> Div {
@@ -132,7 +137,7 @@ pub(super) fn svg_symbol(asset: &'static str, size: f32, color: u32) -> Div {
     div()
         .size(px(size))
         .flex_none()
-        .child(gpui::svg().path(asset).size_full().text_color(rgb(color)))
+        .child(gpui::svg().path(asset).size_full().text_color(ink(color)))
 }
 
 fn status_item(icon: &'static str, label: impl Into<SharedString>, icon_color: u32) -> Div {
@@ -160,9 +165,9 @@ pub(super) fn icon_button(
         .items_center()
         .justify_center()
         .rounded(px(4.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(SELECTED)).text_color(rgb(INK)))
+        .hover(|style| style.bg(rgb(SELECTED)).text_color(ink(INK)))
         .tooltip(move |window, cx| Tooltip::new(label).build(window, cx))
         .child(symbol(glyph, 13.))
 }
@@ -180,13 +185,13 @@ fn message_icon_button(
         .items_center()
         .justify_center()
         .rounded(px(4.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .cursor_pointer()
-        .hover(|style| style.bg(rgb(0xf0f3f7)).text_color(rgb(INK)))
+        .hover(|style| style.bg(rgb(0xf0f3f7)).text_color(ink(INK)))
         .tooltip(move |window, cx| {
             Tooltip::new(label)
                 .bg(rgb(0x292e35))
-                .text_color(rgb(0xffffff))
+                .text_color(ink(0xffffff))
                 .border_0()
                 .shadow_none()
                 .rounded(px(5.))
@@ -324,9 +329,10 @@ impl Render for Desktop {
             self.refresh_sidebar_layout();
         }
         let sidebar = (self.sidebar_open && !connecting).then(|| self.sidebar(window, cx));
-        let divider = sidebar
-            .is_some()
-            .then(|| self.pane_divider(Pane::Sessions, cx).bg(rgb(CANVAS)));
+        let divider = sidebar.is_some().then(|| {
+            self.pane_divider(Pane::Sessions, cx)
+                .bg(self.workspace_tint(CANVAS, 0.18))
+        });
         let settings = connecting.then(|| self.gateway_settings(window, cx));
         let showing_chat = !connecting;
         let content = showing_chat.then(|| self.transcript(window, cx));
@@ -504,7 +510,11 @@ impl Render for Desktop {
             .flex()
             .flex_col()
             .text_size(px(UI_TEXT_SIZE))
-            .text_color(rgb(INK))
+            .text_color(ink(INK))
+            .children(
+                self.has_workspace_background()
+                    .then(|| self.workspace_background()),
+            )
             .child(self.title_strip(connecting, window, cx))
             .child(
                 div()
@@ -518,12 +528,16 @@ impl Render for Desktop {
                             .flex_1()
                             .min_w_0()
                             .relative()
-                            .bg(rgb(CANVAS))
+                            .when(!self.has_workspace_background(), |pane| {
+                                pane.bg(rgb(CANVAS))
+                            })
                             .flex()
                             .flex_col()
                             .children(
-                                (showing_chat && self.settings.display.conversation_backdrop)
-                                    .then(|| conversation_backdrop(window)),
+                                (showing_chat
+                                    && self.settings.display.conversation_backdrop
+                                    && !self.has_workspace_background())
+                                .then(|| conversation_backdrop(window)),
                             )
                             .children(self.banner.as_ref().map(|banner| {
                                 div()
@@ -534,7 +548,7 @@ impl Render for Desktop {
                                     .items_center()
                                     .gap_2()
                                     .bg(rgb(0xffeee8))
-                                    .text_color(rgb(DANGER))
+                                    .text_color(ink(DANGER))
                                     .text_sm()
                                     .child(div().flex_1().child(banner.clone()))
                                     .child(control("dismiss-banner", tr("关闭")).on_click(
@@ -667,7 +681,7 @@ impl Desktop {
                                                         collection == self.files.collection.open,
                                                         |b| {
                                                             b.bg(rgb(SELECTED))
-                                                                .text_color(rgb(ACCENT))
+                                                                .text_color(ink(ACCENT))
                                                         },
                                                     )
                                                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -687,7 +701,7 @@ impl Desktop {
                                     div()
                                         .flex_1()
                                         .text_size(px(13.))
-                                        .text_color(rgb(INK))
+                                        .text_color(ink(INK))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
                                         .child(if self.files.open { "" } else { title }),
                                 )
@@ -758,7 +772,7 @@ impl Desktop {
                     .text_size(px(8.))
                     .line_height(px(8.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(rgb(SURFACE))
+                    .text_color(ink(SURFACE))
                     .child(if unread > 99 {
                         "99+".to_owned()
                     } else {
@@ -787,7 +801,7 @@ impl Desktop {
             .w_full()
             .flex()
             .items_center()
-            .bg(rgb(0xf4f5f7))
+            .bg(self.workspace_tint(0xf4f5f7, 0.48))
             .border_b_1()
             .border_color(rgb(LINE))
             .child(
@@ -914,9 +928,9 @@ impl Desktop {
                         gpui::svg()
                             .path(asset)
                             .size(px(14.))
-                            .text_color(rgb(0x20252c))
+                            .text_color(ink(0x20252c))
                             .when(close, |icon| {
-                                icon.group_hover(id, |style| style.text_color(rgb(0xffffff)))
+                                icon.group_hover(id, |style| style.text_color(ink(0xffffff)))
                             }),
                     );
                 strip = strip.child(button.window_control_area(area).on_click(cx.listener(
@@ -982,14 +996,14 @@ impl Desktop {
             .h(px(23.))
             .flex_none()
             .px_2()
-            .bg(rgb(RAIL))
+            .bg(self.workspace_tint(RAIL, 0.46))
             .border_t_1()
             .border_color(rgb(LINE))
             .flex()
             .items_center()
             .gap(px(6.))
             .text_size(px(11.))
-            .text_color(rgb(MUTED))
+            .text_color(ink(MUTED))
             .child(self.gateway_switcher(host, cx))
             .child(self.gateway_health(cx))
             .children(cwd.map(|cwd| {
@@ -1078,7 +1092,7 @@ impl Desktop {
                             .text_size(px(12.))
                             .line_height(px(17.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(0x606e9a))
+                            .text_color(ink(0x606e9a))
                             .child("Hermes Lite"),
                     )
                     .child(
@@ -1086,7 +1100,7 @@ impl Desktop {
                             .text_size(px(if narrow { 24. } else { 28. }))
                             .line_height(px(37.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(0x252b43))
+                            .text_color(ink(0x252b43))
                             .child(if login {
                                 tr("登录远程网关")
                             } else {
@@ -1101,7 +1115,7 @@ impl Desktop {
                     .gap(px(6.))
                     .text_size(px(12.))
                     .line_height(px(17.))
-                    .text_color(rgb(0x6e7895))
+                    .text_color(ink(0x6e7895))
                     .child(svg_symbol(icons::WORLD, 13., 0x6978a1))
                     .child(div().min_w_0().truncate().child(host))
             }))
@@ -1128,7 +1142,9 @@ impl Desktop {
             .min_h_0()
             .w_full()
             .overflow_y_scroll()
-            .bg(rgb(0xf5f6fc))
+            .when(!self.has_workspace_background(), |page| {
+                page.bg(rgb(0xf5f6fc))
+            })
             .child(
                 div()
                     .min_h_full()
@@ -1186,7 +1202,7 @@ impl Desktop {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(MUTED))
+                .text_color(ink(MUTED))
                 .text_size(px(14.))
                 .child(label)
                 .into_any_element();
@@ -1433,7 +1449,7 @@ impl Desktop {
                             Row::Notice(text) => div()
                                 .px(px(MESSAGE_INSET))
                                 .text_sm()
-                                .text_color(rgb(DANGER))
+                                .text_color(ink(DANGER))
                                 .when_some(highlight, |notice, color| {
                                     notice.bg(rgb(color)).rounded(px(4.))
                                 })
@@ -1489,6 +1505,9 @@ impl Desktop {
                     this.following = false;
                     this.turn_rail.jumped = None;
                     this.reading_moved(cx);
+                    if this.list.logical_scroll_top().item_ix <= 3 {
+                        this.older_history(cx);
+                    }
                     if this.sync_turn_rail() || changed {
                         cx.notify();
                     }
@@ -1533,10 +1552,10 @@ impl Desktop {
                             .bg(rgba(0xfafbfcf8))
                             .shadow_sm()
                             .text_size(px(12.))
-                            .text_color(rgb(MUTED))
+                            .text_color(ink(MUTED))
                             .cursor_pointer()
                             .aria_label(accessible_label)
-                            .hover(|pill| pill.bg(rgb(0xffffff)).text_color(rgb(INK)))
+                            .hover(|pill| pill.bg(rgb(0xffffff)).text_color(ink(INK)))
                             .child(symbol(icons::ARROW_DOWN, 14.))
                             .child(label)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -1615,7 +1634,7 @@ impl Desktop {
                 .border_color(rgb(USER_MESSAGE_BORDER))
                 .bg(rgb(USER_MESSAGE_BACKGROUND))
                 .shadow_sm()
-                .text_color(rgb(CONVERSATION_INK))
+                .text_color(ink(CONVERSATION_INK))
                 .text_size(message_size)
                 .cursor_pointer()
                 .tooltip(|window, cx| Tooltip::new(tr("回到这条提问")).build(window, cx))
@@ -1729,7 +1748,7 @@ impl Desktop {
                     .items_center()
                     .gap_2()
                     .text_size(px(12.))
-                    .text_color(rgb(DANGER))
+                    .text_color(ink(DANGER))
                     .child(div().flex_1().child(error))
                     .child(
                         control("reload-session", tr("重新读取")).on_click(cx.listener(
@@ -1752,7 +1771,7 @@ impl Desktop {
                         .items_center()
                         .gap_2()
                         .text_size(px(12.))
-                        .text_color(rgb(DANGER))
+                        .text_color(ink(DANGER))
                         .child(div().flex_1().child(tr("上一条消息待确认")))
                         .child(control("discard-uncertain", tr("解除待确认")).on_click(
                             cx.listener(|this, _, _, cx| {
@@ -1795,7 +1814,7 @@ impl Desktop {
                     .items_center()
                     .gap_2()
                     .text_size(px(12.))
-                    .text_color(rgb(DANGER))
+                    .text_color(ink(DANGER))
                     .child(tr("执行结果待确认"))
                     .child(div().flex_1().min_w_0().truncate().child(text))
                     .child(
@@ -1903,7 +1922,7 @@ impl Desktop {
                                             .max_w(px(139.))
                                             .truncate()
                                             .text_size(px(11.))
-                                            .text_color(rgb(SECONDARY))
+                                            .text_color(ink(SECONDARY))
                                             .child(name),
                                     ),
                             )
@@ -1966,7 +1985,7 @@ impl Desktop {
             .flex_none()
             .rounded_full()
             .bg(rgb(if can_submit { 0x272d36 } else { 0xdde2e9 }))
-            .text_color(rgb(SURFACE))
+            .text_color(ink(SURFACE))
             .flex()
             .items_center()
             .justify_center()
@@ -2141,7 +2160,7 @@ impl Desktop {
             .id("composer-panel")
             .w_full()
             .rounded(px(6.))
-            .bg(rgba(0xf9f9fbee))
+            .bg(crate::theme::composer(0xf9f9fb).alpha(0.93))
             .border_color(rgb(if focused { ACCENT } else { LINE }))
             .when(may_edit_files, |panel| {
                 panel
@@ -2193,7 +2212,7 @@ impl Desktop {
         );
         if prompt.clarify {
             return card
-                .child(div().text_size(px(12.)).text_color(rgb(MUTED)).child(
+                .child(div().text_size(px(12.)).text_color(ink(MUTED)).child(
                     crate::i18n::format_text!(
                         "{} 个待回答问题",
                         "{} unanswered question(s)",
@@ -2276,7 +2295,7 @@ fn new_chat_intro(width: gpui::Pixels, window: &Window) -> Div {
             div()
                 .text_size(px(13.))
                 .line_height(px(19.))
-                .text_color(rgb(MUTED))
+                .text_color(ink(MUTED))
                 .child(tr("描述你的任务，或添加文件和图片。")),
         )
 }
@@ -2354,7 +2373,7 @@ fn file_chip(name: SharedString) -> Div {
         .border_color(rgb(0xd8e3f4))
         .bg(rgb(0xf2f6fc))
         .text_size(px(11.))
-        .text_color(rgb(0x4e647e))
+        .text_color(ink(0x4e647e))
         .child(svg_symbol(icons::LINK, 10., MUTED))
         .child(div().min_w_0().truncate().child(name))
 }
@@ -2395,13 +2414,13 @@ fn message_body(
         .w_full()
         .px(px(MESSAGE_INSET))
         .py_2()
-        .text_color(rgba((CONVERSATION_INK << 8) | 0xf0))
+        .text_color(ink_alpha((CONVERSATION_INK << 8) | 0xf0))
         .when(user, |body| {
             body.rounded(px(4.))
                 .bg(rgba((USER_MESSAGE_BACKGROUND << 8) | 0xe6))
                 .border_1()
                 .border_color(rgb(if editing { ACCENT } else { USER_MESSAGE_BORDER }))
-                .text_color(rgba((CONVERSATION_INK << 8) | 0xe3))
+                .text_color(ink_alpha((CONVERSATION_INK << 8) | 0xe3))
                 .line_height((font_size * 1.3).max(px(19.)))
         })
         .when_some(highlight.filter(|_| !editing), |body, color| {
@@ -2453,7 +2472,7 @@ fn message_body(
             div()
                 .id("message-time")
                 .text_size(px(11.))
-                .text_color(rgb(0x79818b))
+                .text_color(ink(0x79818b))
                 .tooltip(move |window, cx| Tooltip::new(full.clone()).build(window, cx))
                 .child(at.format("%H:%M").to_string())
         }))
@@ -2558,10 +2577,10 @@ fn background_result_row(
         .gap(px(6.))
         .px(px(MESSAGE_INSET))
         .text_size(px(12.))
-        .text_color(rgb(crate::style::SCAFFOLD_INK))
+        .text_color(ink(crate::style::SCAFFOLD_INK))
         .rounded(px(4.))
         .cursor_pointer()
-        .hover(|row| row.text_color(rgb(MUTED)))
+        .hover(|row| row.text_color(ink(MUTED)))
         .child(svg_symbol(glyph, 13., crate::style::SCAFFOLD_INK).flex_none())
         .child(div().min_w_0().truncate().child(notice.label))
         .child(
@@ -2725,7 +2744,7 @@ fn remote_file_card(
                         .min_w_0()
                         .truncate()
                         .text_size(px(12.))
-                        .text_color(rgb(INK))
+                        .text_color(ink(INK))
                         .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
                         .child(label.to_owned()),
                 )
@@ -2788,9 +2807,9 @@ fn attachment_action(id: &'static str, label: &'static str) -> gpui::Stateful<Di
         .border_color(rgb(0xdce4ef))
         .bg(rgba(0xffffff82))
         .text_size(px(11.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .cursor_pointer()
-        .hover(|button| button.bg(rgb(0xe9eff8)).text_color(rgb(INK)))
+        .hover(|button| button.bg(rgb(0xe9eff8)).text_color(ink(INK)))
 }
 
 fn reply_body(
@@ -2923,13 +2942,13 @@ pub(in crate::app) fn markdown(
         .markdown_extensions(chat_markdown::code_fences())
         .inline_code_style(
             gpui::StyleRefinement::default()
-                .font_family(CODE_FONT)
+                .font_family(crate::theme::code_family())
                 .text_size(font_size * 0.9)
                 .px(px(3.))
                 .py(px(1.))
                 .rounded(px(4.))
                 .bg(rgba(0x1414140d))
-                .text_color(rgba(0x141414e0)),
+                .text_color(ink_alpha(0x141414e0)),
         )
         .selectable(true)
         .code_block_actions(|code, _, _| chat_markdown::copy_fence(code.code()))
@@ -2990,7 +3009,10 @@ fn command_receipt_row(receipt: &crate::command_receipt::CommandReceipt, index: 
     let command = format!("/{}", receipt.command);
     let output = SharedString::from(receipt.output.clone());
     let multiline = output.contains('\n') || output.chars().take(150).count() == 150;
-    let name = div().flex_none().font_family(CODE_FONT).child(command);
+    let name = div()
+        .flex_none()
+        .font_family(crate::theme::code_family())
+        .child(command);
     let content = if multiline {
         div()
             .w(gpui::relative(0.72))
@@ -3005,8 +3027,8 @@ fn command_receipt_row(receipt: &crate::command_receipt::CommandReceipt, index: 
                     .id(("command-receipt-output", index))
                     .max_h(px(148.))
                     .overflow_y_scroll()
-                    .font_family(CODE_FONT)
-                    .text_color(rgb(0x818991))
+                    .font_family(crate::theme::code_family())
+                    .text_color(ink(0x818991))
                     .child(output),
             )
     } else {
@@ -3027,7 +3049,7 @@ fn command_receipt_row(receipt: &crate::command_receipt::CommandReceipt, index: 
         .py(px(7.))
         .text_size(px(11.5))
         .line_height(px(17.))
-        .text_color(rgb(0x838b94))
+        .text_color(ink(0x838b94))
         .child(content)
 }
 
@@ -3050,8 +3072,8 @@ fn reasoning_row(
                 .gap(px(5.))
                 .cursor_pointer()
                 .text_size(px(12.))
-                .text_color(rgb(MUTED))
-                .hover(|row| row.text_color(rgb(SECONDARY)))
+                .text_color(ink(MUTED))
+                .hover(|row| row.text_color(ink(SECONDARY)))
                 .on_click(move |_, _, cx| {
                     let _ = desktop.update(cx, |this, cx| {
                         if this.view_revision != revision {
@@ -3086,7 +3108,7 @@ fn reasoning_row(
                     .pb(px(2.))
                     .text_size(px(12.))
                     .line_height(px(18.))
-                    .text_color(rgb(0x858c94))
+                    .text_color(ink(0x858c94))
                     .child(text),
             )
         })

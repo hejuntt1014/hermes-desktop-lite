@@ -42,6 +42,7 @@ x11rb = "0.13"
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["wayland", "x11"] }
 
 [target.'cfg(windows)'.dependencies]
+jsonc-parser = { version = "0.34", features = ["serde"] }
 windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation"] }
 winreg = "0.56"
 raw-window-handle = "0.6"

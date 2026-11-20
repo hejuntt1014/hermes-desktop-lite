@@ -1,4 +1,6 @@
-use gpui::{App, Div, FontWeight, ScrollHandle, SharedString, Window, div, prelude::*, px, rgb};
+use crate::theme::rgb;
+
+use gpui::{App, Div, FontWeight, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use gpui_component::scroll::Scrollbar;
 use markdown::mdast::AlignKind;
 

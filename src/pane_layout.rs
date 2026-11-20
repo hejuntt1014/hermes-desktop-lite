@@ -1,8 +1,10 @@
+use crate::theme::rgb;
+
 use crate::i18n::text as tr;
 
 use gpui::{
     App, Bounds, Context, Div, MouseButton, MouseDownEvent, MouseMoveEvent, Stateful, Window,
-    WindowBounds, div, point, prelude::*, px, rgb, size,
+    WindowBounds, div, point, prelude::*, px, size,
 };
 use gpui_component::tooltip::Tooltip;
 

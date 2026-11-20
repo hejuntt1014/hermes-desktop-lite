@@ -93,6 +93,10 @@ impl Desktop {
             return;
         };
         let exact = find_anchor(session, &position.anchor);
+        if exact.is_none() && session.history_partial {
+            self.pending_reading = Some(position);
+            return;
+        }
         let fallback = || {
             position
                 .turn

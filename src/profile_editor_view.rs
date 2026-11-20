@@ -1,8 +1,10 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use gpui::{
     Anchor, ClipboardItem, Context, Div, IntoElement, SharedString, Stateful, Styled, Window, div,
-    prelude::*, px, rgb, rgba,
+    prelude::*, px,
 };
 use gpui_component::{
     Disableable, Sizable,
@@ -13,7 +15,6 @@ use gpui_component::{
 
 use crate::{
     app::{profile_editor::NewProfile, profiles::Profile},
-    style::CODE_FONT,
 };
 
 use super::{
@@ -97,7 +98,7 @@ impl Desktop {
                                     div()
                                         .text_size(px(14.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(rgb(INK))
+                                        .text_color(ink(INK))
                                         .child(tr("配置档案")),
                                 )
                                 .children((!entries.is_empty()).then(|| {
@@ -244,7 +245,7 @@ impl Desktop {
                     .min_w_0()
                     .truncate()
                     .text_size(px(12.))
-                    .text_color(rgb(SECONDARY))
+                    .text_color(ink(SECONDARY))
                     .child(profile.label.clone()),
             )
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -317,7 +318,7 @@ impl Desktop {
                         div()
                             .text_size(px(17.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(INK))
+                            .text_color(ink(INK))
                             .child(profile.label.clone()),
                     )
                     .children(subtitle.map(muted))
@@ -330,7 +331,7 @@ impl Desktop {
             )
             .children(
                 (!profile.path.is_empty())
-                    .then(|| muted(profile.path.clone()).font_family(CODE_FONT).pt_1()),
+                    .then(|| muted(profile.path.clone()).font_family(crate::theme::code_family()).pt_1()),
             )
             .child(
                 div()
@@ -361,9 +362,9 @@ impl Desktop {
                         div()
                             .flex_1()
                             .text_size(px(12.))
-                            .font_family(CODE_FONT)
+                            .font_family(crate::theme::code_family())
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(INK))
+                            .text_color(ink(INK))
                             .child("SOUL.md"),
                     )
                     .children(reload_enabled.then(|| {
@@ -480,7 +481,7 @@ impl Desktop {
                     let file = (name != "SOUL.md").then_some(name);
                     control(name, name)
                         .when(state.memory_file == file, |button| {
-                            button.bg(rgb(SELECTED)).text_color(rgb(ACCENT))
+                            button.bg(rgb(SELECTED)).text_color(ink(ACCENT))
                         })
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.select_profile_document(file, window, cx)
@@ -573,7 +574,7 @@ impl Desktop {
                 .border_color(rgb(LINE))
                 .text_size(px(13.))
                 .line_height(px(21.))
-                .text_color(rgb(INK))
+                .text_color(ink(INK))
                 .child(shown),
         )
     }
@@ -636,7 +637,7 @@ impl Desktop {
                         div()
                             .text_size(px(16.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(rgb(INK))
+                            .text_color(ink(INK))
                             .child(tr("新建配置档案")),
                     )
                     .child(
@@ -691,7 +692,7 @@ fn muted(text: impl Into<SharedString>) -> Div {
     div()
         .text_size(px(11.5))
         .line_height(px(17.))
-        .text_color(rgb(MUTED))
+        .text_color(ink(MUTED))
         .child(text.into())
 }
 
@@ -703,7 +704,7 @@ fn badge(text: &'static str, fill: u32, color: u32) -> Div {
         .rounded_full()
         .bg(rgb(fill))
         .text_size(px(10.))
-        .text_color(rgb(color))
+        .text_color(ink(color))
         .child(text)
 }
 
@@ -719,7 +720,7 @@ fn meta(label: &'static str, value: String) -> Div {
                 .min_w_0()
                 .text_size(px(12.))
                 .line_height(px(17.))
-                .text_color(rgb(SECONDARY))
+                .text_color(ink(SECONDARY))
                 .child(value),
         )
 }
@@ -732,7 +733,7 @@ fn error_line(error: SharedString) -> Div {
         .rounded(px(4.))
         .text_size(px(11.5))
         .line_height(px(17.))
-        .text_color(rgb(DANGER))
+        .text_color(ink(DANGER))
         .child(error)
 }
 
@@ -749,20 +750,20 @@ fn profile_avatar(profile: &Profile) -> Div {
         .bytes()
         .fold(0usize, |sum, byte| sum.wrapping_add(usize::from(byte)))
         % COLORS.len();
-    let (fill, ink) = COLORS[color];
+    let (fill, foreground) = COLORS[color];
     div()
         .size(px(21.))
         .flex_none()
         .rounded(px(5.))
         .bg(rgb(fill))
-        .text_color(rgb(ink))
+        .text_color(ink(foreground))
         .flex()
         .items_center()
         .justify_center()
         .text_size(px(11.))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .child(if profile.is_default {
-            svg_symbol(icons::PROFILE_CARD, 13., ink).into_any_element()
+            svg_symbol(icons::PROFILE_CARD, 13., foreground).into_any_element()
         } else {
             profile
                 .label

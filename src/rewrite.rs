@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use std::collections::HashSet;
@@ -5,7 +7,7 @@ use std::collections::HashSet;
 use anyhow::{Context as _, Result, bail};
 use gpui::{
     AnyElement, App, ClipboardItem, Context, Div, Entity, EntityInputHandler, FocusHandle, Pixels,
-    Stateful, WeakEntity, Window, div, prelude::*, px, rgb, rgba,
+    Stateful, WeakEntity, Window, div, prelude::*, px,
 };
 use gpui_component::{
     Disableable, Sizable,
@@ -686,6 +688,7 @@ impl Desktop {
             && ["pending", "messages"].into_iter().any(|field| {
                 snapshot[field].as_array().into_iter().flatten().any(|row| {
                     row["submission_id"] == id.as_str() || row["admission_id"] == id.as_str()
+                        || (field == "pending" && row["input_id"] == id.as_str())
                 })
             })
         {
@@ -818,7 +821,7 @@ impl Desktop {
                         .rounded(px(9.))
                         .bg(rgb(0xffffff))
                         .shadow_lg()
-                        .text_color(rgb(INK))
+                        .text_color(ink(INK))
                         .child(
                             div()
                                 .text_size(px(15.))
@@ -847,7 +850,7 @@ impl Desktop {
                         .children((!missing_edit && count > 0).then(|| {
                             div()
                                 .text_size(px(12.))
-                                .text_color(rgb(0x9a562b))
+                                .text_color(ink(0x9a562b))
                                 .child(crate::i18n::format_text!(
                                     "继续后，这条消息及之后的 {count} 轮对话会从当前会话移除。", "Continuing will remove this message and the next {count} turn(s) from this conversation."
                                 ))
@@ -855,7 +858,7 @@ impl Desktop {
                         .children((editor.stale || missing_edit).then(|| {
                             div()
                                 .text_size(px(12.))
-                                .text_color(rgb(0xa44c35))
+                                .text_color(ink(0xa44c35))
                                 .child(tr("会话已更新。可以复制编辑内容，再重新打开这条消息。"))
                         }))
                         .child(
@@ -868,7 +871,7 @@ impl Desktop {
                                         div()
                                             .flex_1()
                                             .text_size(px(11.))
-                                            .text_color(rgb(MUTED))
+                                            .text_color(ink(MUTED))
                                             .child(crate::i18n::format_text!("保留 {attachment_count} 个附件", "Keep {attachment_count} attachment(s)")),
                                     )
                                 })
@@ -981,7 +984,7 @@ impl Desktop {
                     div()
                         .text_size(px(11.))
                         .line_height(px(16.))
-                        .text_color(rgb(0x9a562b))
+                        .text_color(ink(0x9a562b))
                         .child(crate::i18n::format_text!(
                             "重发后，此消息之后的 {later} 轮对话将从当前会话移除。",
                             "Resending will remove the {later} turn(s) that follow this message."
@@ -991,7 +994,7 @@ impl Desktop {
                     div()
                         .text_size(px(11.))
                         .line_height(px(16.))
-                        .text_color(rgb(0xa44c35))
+                        .text_color(ink(0xa44c35))
                         .child(tr("会话已更新。可以复制编辑内容，再重新打开这条消息。"))
                 }))
                 .into_any_element(),

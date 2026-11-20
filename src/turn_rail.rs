@@ -1,9 +1,11 @@
+use crate::theme::{ink, rgba};
+
 use std::{collections::BTreeMap, time::Instant};
 
 use gpui::{
     Context, Div, Entity, FocusHandle, KeyDownEvent, ListOffset, MouseMoveEvent, Pixels, Point,
     Render, ScrollEvent, ScrollHandle, Stateful, StyleRefinement, WeakEntity, Window, div,
-    prelude::*, px, rgb, rgba,
+    prelude::*, px,
 };
 
 use crate::style::ACCENT;
@@ -244,7 +246,7 @@ impl RailView {
                     .truncate()
                     .text_size(px(11.))
                     .line_height(px(15.))
-                    .text_color(rgb(0xf6f7f8))
+                    .text_color(ink(0xf6f7f8))
                     .child(turn.preview.clone()),
             );
         (Some(preview), moving || fading)

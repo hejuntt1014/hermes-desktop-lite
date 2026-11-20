@@ -17,6 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - platform: windows-x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
           - platform: linux-x64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
@@ -45,11 +48,31 @@ jobs:
         run: |
           rustup show active-toolchain
           rustup target add "${{ matrix.target }}"
-      - name: Test and build
+      - name: Test
+        run: cargo test --locked --release --target "${{ matrix.target }}"
+      - name: Build
+        run: cargo build --locked --release --target "${{ matrix.target }}"
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          cargo test --locked --release --target "${{ matrix.target }}"
-          cargo build --locked --release --target "${{ matrix.target }}"
-      - name: Package
+          New-Item -ItemType Directory -Path dist | Out-Null
+          $name = 'hermes-desktop-lite.exe'
+          Copy-Item -LiteralPath "target/${{ matrix.target }}/release/$name" -Destination dist
+          $digest = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "dist/$name.sha256" -Value "$digest  $name" -Encoding ascii
+          $notices = @(
+            'LICENSE', 'THIRD_PARTY_NOTICES.md', 'assets/tabler/LICENSE',
+            'assets/codicon/LICENSE', 'assets/codicon/NOTICE',
+            'assets/phosphor/LICENSE', 'assets/fonts/OFL-BodoniModa.txt'
+          )
+          $gap = [Environment]::NewLine + [Environment]::NewLine
+          $sections = foreach ($path in $notices) {
+            $path + $gap + (Get-Content -LiteralPath $path -Raw).TrimEnd()
+          }
+          Set-Content -LiteralPath dist/LICENSES.txt -Value ($sections -join ($gap + '---' + $gap)) -Encoding utf8
+      - name: Package Linux and macOS
+        if: runner.os != 'Windows'
         run: bash scripts/package-desktop.sh "${{ matrix.platform }}" "target/${{ matrix.target }}/release/hermes-desktop-lite"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

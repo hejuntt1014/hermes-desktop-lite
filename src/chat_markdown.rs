@@ -1,3 +1,5 @@
+use crate::theme::ink;
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -8,14 +10,14 @@ use std::{
 
 use gpui::{
     AnyElement, App, ClipboardItem, IntoElement, SharedString, StyleRefinement, Window, div,
-    prelude::*, px, rgb, rgba,
+    prelude::*, px,
 };
 use gpui_component::text::{MarkdownExtensions, MarkdownNode, TextView, TextViewStyle};
 use markdown::{ParseOptions, mdast::Node, to_mdast};
 
 use crate::{
     icons,
-    style::{CODE_FONT, CONVERSATION_INK, MUTED},
+    style::{CONVERSATION_INK, MUTED},
 };
 
 use super::icon_button;
@@ -124,11 +126,11 @@ pub(super) fn code_fence_style(height: gpui::Pixels) -> StyleRefinement {
         .max_h(height)
         .rounded(px(7.))
         .border_0()
-        .bg(rgba((FENCE_BACKGROUND << 8) | 0xb8))
-        .font_family(CODE_FONT)
+        .bg(crate::theme::code(FENCE_BACKGROUND).alpha(0.72))
+        .font_family(crate::theme::code_family())
         .text_size(px(12.))
         .line_height(px(19.))
-        .text_color(rgb(CONVERSATION_INK))
+        .text_color(ink(CONVERSATION_INK))
         .px_3()
         .pt(px(9.))
         .pb(px(10.))
@@ -181,7 +183,7 @@ fn expandable_fence(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> A
                 .items_center()
                 .justify_center()
                 .rounded(px(4.))
-                .bg(rgb(FENCE_BACKGROUND))
+                .bg(crate::theme::code(FENCE_BACKGROUND))
                 .cursor_pointer()
                 .block_mouse_except_scroll()
                 .aria_label(if expanded {
@@ -193,7 +195,7 @@ fn expandable_fence(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> A
                     gpui::svg()
                         .path(icons::CHEVRON_DOWN)
                         .size(px(13.))
-                        .text_color(rgb(MUTED))
+                        .text_color(ink(MUTED))
                         .when(expanded, |icon| {
                             icon.with_transformation(gpui::Transformation::rotate(gpui::radians(
                                 std::f32::consts::PI,

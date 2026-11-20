@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use super::{
@@ -13,7 +15,7 @@ use crate::{
     session::Row,
     settings::ReadingAnchor,
 };
-use gpui::{Context, Div, Task, Window, div, prelude::*, px, rgb, uniform_list};
+use gpui::{Context, Div, Task, Window, div, prelude::*, px, uniform_list};
 use gpui_component::tooltip::Tooltip;
 use std::{collections::HashSet, sync::Arc};
 
@@ -39,6 +41,7 @@ impl Desktop {
             open: true,
             ..Default::default()
         };
+        self.older_history(cx);
         let Some(session) = self
             .selected
             .as_ref()
@@ -175,7 +178,7 @@ impl Desktop {
                 .items_center()
                 .justify_center()
                 .text_size(px(13.))
-                .text_color(rgb(0x788393))
+                .text_color(ink(0x788393))
                 .child(if loading {
                     tr("正在整理会话文件…")
                 } else {
@@ -225,7 +228,7 @@ impl Desktop {
                                         div()
                                             .truncate()
                                             .text_size(px(10.))
-                                            .text_color(rgb(0x84909d))
+                                            .text_color(ink(0x84909d))
                                             .child(entry.path.clone()),
                                     ),
                             );

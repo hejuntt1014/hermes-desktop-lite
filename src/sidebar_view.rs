@@ -1,8 +1,10 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use gpui::{
     Anchor, AnyElement, AppContext, Context, Div, Focusable, IntoElement, Render, SharedString,
-    Window, div, prelude::*, px, rgb,
+    Window, div, prelude::*, px,
 };
 use gpui_component::{
     Sizable,
@@ -40,7 +42,7 @@ impl Render for PinnedDrag {
             .items_center()
             .shadow_md()
             .text_size(px(12.))
-            .text_color(rgb(SECONDARY))
+            .text_color(ink(SECONDARY))
             .child(svg_symbol(icons::PIN, 12., MUTED))
             .child(div().min_w_0().truncate().child(self.title.clone()))
     }
@@ -56,11 +58,23 @@ impl Desktop {
             .flex_none()
             .flex()
             .flex_col()
-            .bg(if cfg!(windows) && self.settings.display.sidebar_glass {
-                rgb(SIDEBAR_GLASS_TINT)
+            .bg(if self.has_workspace_background() {
+                let glass = cfg!(windows) && self.settings.display.sidebar_glass;
+                let tint = if glass {
+                    0.34 - f32::from(self.settings.display.sidebar_transparency()) / 100.
+                } else {
+                    0.34
+                };
+                crate::theme::sidebar(SIDEBAR_BACKGROUND).alpha(
+                    tint * (1.
+                        - f32::from(self.settings.display.background().window_transparency())
+                            / 100.),
+                )
+            } else if cfg!(windows) && self.settings.display.sidebar_glass {
+                crate::theme::sidebar(SIDEBAR_GLASS_TINT)
                     .alpha(1. - f32::from(self.settings.display.sidebar_transparency()) / 100.)
             } else {
-                rgb(SIDEBAR_BACKGROUND)
+                crate::theme::sidebar(SIDEBAR_BACKGROUND)
             })
             .child(
                 div()
@@ -131,7 +145,7 @@ impl Desktop {
                                     .min_w_0()
                                     .truncate()
                                     .text_size(px(13.))
-                                    .text_color(rgb(SECONDARY))
+                                    .text_color(ink(SECONDARY))
                                     .child(tr("新建会话")),
                             )
                             .child(
@@ -155,7 +169,7 @@ impl Desktop {
                                             .border_color(rgb(0xe3e8ef))
                                             .bg(rgb(0xf7f8fa))
                                             .text_size(px(9.5))
-                                            .text_color(rgb(MUTED))
+                                            .text_color(ink(MUTED))
                                             .child(key)
                                     }),
                                 ),
@@ -252,7 +266,7 @@ impl Desktop {
                             .min_w_0()
                             .truncate()
                             .text_size(px(11.))
-                            .text_color(rgb(SECONDARY))
+                            .text_color(ink(SECONDARY))
                             .child(label),
                     )
                     .child(svg_symbol(icons::CHEVRON_DOWN, 11., MUTED).flex_none()),
@@ -361,7 +375,7 @@ impl Desktop {
                         .flex_none()
                         .w(px(11.))
                         .text_size(px(11.))
-                        .text_color(rgb(0x8c95a3))
+                        .text_color(ink(0x8c95a3))
                         .child(if last { "└" } else { "├" }),
                 )
             })
@@ -430,7 +444,7 @@ impl Desktop {
                     .min_w_0()
                     .truncate()
                     .text_size(px(12.5))
-                    .text_color(rgb(title_color))
+                    .text_color(ink(title_color))
                     .font_weight(if unread {
                         gpui::FontWeight::MEDIUM
                     } else {
@@ -450,7 +464,7 @@ impl Desktop {
                     .child(
                         div()
                             .text_size(px(11.))
-                            .text_color(rgb(MUTED))
+                            .text_color(ink(MUTED))
                             .group_hover("sidebar-session", |style| style.invisible())
                             .child(session_age(row.updated_at, now)),
                     )

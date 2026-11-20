@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::collections::{HashMap, HashSet};
@@ -5,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Local, Utc};
 use gpui::{
     Anchor, AnyElement, Context, Div, FontWeight, IntoElement, SharedString, div, prelude::*, px,
-    rgb,
 };
 use gpui_component::{
     button::{Button, ButtonVariants},
@@ -271,12 +272,12 @@ impl Desktop {
                     .items_center()
                     .gap_1()
                     .text_size(px(11.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(
                         gpui::svg()
                             .path(icons::ZAP)
                             .size(px(12.))
-                            .text_color(rgb(MUTED)),
+                            .text_color(ink(MUTED)),
                     )
                     .child(label),
             );
@@ -319,7 +320,7 @@ impl Desktop {
                                 .pb_1()
                                 .text_size(px(12.))
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(rgb(MUTED))
+                                .text_color(ink(MUTED))
                                 .child(tr("审批模式")),
                         )
                         .children(
@@ -346,13 +347,13 @@ impl Desktop {
                                                 .child(
                                                     div()
                                                         .text_size(px(13.))
-                                                        .text_color(rgb(INK))
+                                                        .text_color(ink(INK))
                                                         .child(mode.label()),
                                                 )
                                                 .child(
                                                     div()
                                                         .text_size(px(11.))
-                                                        .text_color(rgb(MUTED))
+                                                        .text_color(ink(MUTED))
                                                         .child(mode.detail()),
                                                 ),
                                         )
@@ -400,7 +401,7 @@ impl Desktop {
                 .gap_1()
                 .px_1()
                 .text_size(px(11.))
-                .text_color(rgb(MUTED))
+                .text_color(ink(MUTED))
                 .aria_label(label.clone())
                 .tooltip(move |window, cx| {
                     let detail = usage.cache_hit.map_or_else(
@@ -418,7 +419,7 @@ impl Desktop {
                     ProgressCircle::new("context-ring")
                         .size(px(14.))
                         .value(percent as f32)
-                        .color(rgb(if percent >= 85. { 0xb17635 } else { 0x7d8ca1 })),
+                        .color(ink(if percent >= 85. { 0xb17635 } else { 0x7d8ca1 })),
                 )
                 .child(amount)
                 .into_any_element(),
@@ -456,7 +457,7 @@ impl Desktop {
                         .child(
                             div()
                                 .text_size(px(11.))
-                                .text_color(rgb(0x427762))
+                                .text_color(ink(0x427762))
                                 .child(label),
                         ),
                 )
@@ -478,7 +479,7 @@ impl Desktop {
                         panel = panel.child(
                             div()
                                 .text_size(px(11.))
-                                .text_color(rgb(MUTED))
+                                .text_color(ink(MUTED))
                                 .child(tr("网关暂无可用额度数据")),
                         );
                     }
@@ -510,7 +511,7 @@ fn quota_account(account: &UsageAccount) -> Div {
             row.child(
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(account.label.clone()),
             )
         })
@@ -518,7 +519,7 @@ fn quota_account(account: &UsageAccount) -> Div {
             row.child(
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .child(tr("暂无额度数据")),
             )
         })
@@ -539,7 +540,7 @@ fn quota_account(account: &UsageAccount) -> Div {
                         )),
                 )
                 .children(entry.reset.map(|date| {
-                    div().text_size(px(10.)).text_color(rgb(MUTED)).child(
+                    div().text_size(px(10.)).text_color(ink(MUTED)).child(
                         crate::i18n::format_text!(
                             "{} 重置",
                             "Resets {}",

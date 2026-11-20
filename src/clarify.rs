@@ -1,10 +1,12 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use gpui::{
     Context, Div, Entity, EntityInputHandler, FocusHandle, Focusable, KeyDownEvent, ScrollHandle,
-    Stateful, Window, div, prelude::*, px, rgb, rgba,
+    Stateful, Window, div, prelude::*, px,
 };
 use gpui_component::{
     Disableable, Sizable,
@@ -635,7 +637,7 @@ impl Desktop {
                         .items_center()
                         .gap_2()
                         .text_size(px(11.))
-                        .text_color(rgb(MUTED))
+                        .text_color(ink(MUTED))
                         .child(if form.len() == 1 {
                             tr("1 个问题").to_owned()
                         } else {
@@ -678,7 +680,7 @@ impl Desktop {
                                             .bg(rgb(0xeef1f6))
                                             .text_size(px(11.))
                                             .flex_none()
-                                            .text_color(rgb(MUTED))
+                                            .text_color(ink(MUTED))
                                             .child(if question.multi {
                                                 tr("可多选")
                                             } else {
@@ -726,7 +728,7 @@ impl Desktop {
                                                     .min_w_0()
                                                     .max_w_full()
                                                     .text_size(px(13.))
-                                                    .text_color(rgb(if active {
+                                                    .text_color(ink(if active {
                                                         INK
                                                     } else {
                                                         SECONDARY
@@ -736,7 +738,7 @@ impl Desktop {
                                             .children((name != label).then(|| {
                                                 div()
                                                     .text_size(px(11.))
-                                                    .text_color(rgb(MUTED))
+                                                    .text_color(ink(MUTED))
                                                     .child(tr("推荐"))
                                             })),
                                     )
@@ -827,7 +829,7 @@ impl Desktop {
                         .border_1()
                         .border_color(rgb(0xd9e3f2))
                         .bg(rgb(0xffffff))
-                        .text_color(rgb(INK))
+                        .text_color(ink(INK))
                         .p_3()
                         .gap_2()
                         .child(
@@ -860,14 +862,14 @@ impl Desktop {
                             div()
                                 .px_4()
                                 .text_size(px(12.))
-                                .text_color(rgb(0xa43e37))
+                                .text_color(ink(0xa43e37))
                                 .child(tr("请至少回答一个问题。"))
                         }))
                         .children(error.map(|error| {
                             div()
                                 .px_4()
                                 .text_size(px(12.))
-                                .text_color(rgb(0xa43e37))
+                                .text_color(ink(0xa43e37))
                                 .child(error.clone())
                         }))
                         .child(
@@ -884,7 +886,7 @@ impl Desktop {
                                         .flex_1()
                                         .min_w_0()
                                         .text_size(px(11.))
-                                        .text_color(rgb(MUTED))
+                                        .text_color(ink(MUTED))
                                         .child(if navigating {
                                             tr("↑ ↓ 移动 · Enter 选择")
                                         } else if cfg!(target_os = "macos") {
@@ -957,7 +959,7 @@ fn choice_key(index: usize, selected: bool, pointed: bool) -> Div {
             0xdfe5ee
         }))
         .bg(rgb(if selected { ACCENT } else { 0xffffff }))
-        .text_color(rgb(if selected {
+        .text_color(ink(if selected {
             0xffffff
         } else if pointed {
             ACCENT
@@ -1046,6 +1048,6 @@ fn answer_line(icon: &'static str, text: String, color: u32) -> Div {
         .items_start()
         .gap_2()
         .text_size(px(13.))
-        .child(div().flex_1().min_w_0().text_color(rgb(color)).child(text))
+        .child(div().flex_1().min_w_0().text_color(ink(color)).child(text))
         .child(symbol(icon, 14.))
 }

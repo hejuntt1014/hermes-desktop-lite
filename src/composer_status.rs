@@ -1,6 +1,8 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
-use gpui::{Anchor, ClipboardItem, Context, Div, SharedString, div, prelude::*, px, rgb};
+use gpui::{Anchor, ClipboardItem, Context, Div, SharedString, div, prelude::*, px};
 use gpui_component::{
     button::{Button, ButtonVariants},
     menu::DropdownMenu,
@@ -12,7 +14,7 @@ use crate::{
     session::Session,
     session_activity::Kind as WorkKind,
     session_todos::{TodoStatus, ordered_todos},
-    style::{ACCENT, CODE_FONT, MUTED},
+    style::{ACCENT, MUTED},
 };
 
 use super::{Desktop, LINE, SECONDARY, icon_button, svg_symbol, tab_view::menu_item};
@@ -54,7 +56,7 @@ impl Desktop {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_color(rgb(SECONDARY))
+                                    .text_color(ink(SECONDARY))
                                     .child(process.title.clone()),
                             )
                             .child(work_status(tr("运行中"), 0x4d719f))
@@ -87,9 +89,9 @@ impl Desktop {
                                 .p(px(6.))
                                 .rounded(px(4.))
                                 .bg(rgb(0xeff3f8))
-                                .font_family(CODE_FONT)
+                                .font_family(crate::theme::code_family())
                                 .line_height(px(15.))
-                                .text_color(rgb(MUTED))
+                                .text_color(ink(MUTED))
                                 .child(if process.output.is_empty() {
                                     tr("暂无输出").into()
                                 } else {
@@ -124,7 +126,7 @@ impl Desktop {
                                     .flex_1()
                                     .min_w_0()
                                     .truncate()
-                                    .text_color(rgb(SECONDARY))
+                                    .text_color(ink(SECONDARY))
                                     .child(agent.title.clone()),
                             )
                             .children((!agent.model.is_empty() && agent.tool.is_empty()).then(
@@ -132,7 +134,7 @@ impl Desktop {
                                     div()
                                         .max_w(px(130.))
                                         .truncate()
-                                        .text_color(rgb(MUTED))
+                                        .text_color(ink(MUTED))
                                         .child(agent.model.clone())
                                 },
                             ))
@@ -140,7 +142,7 @@ impl Desktop {
                                 div()
                                     .max_w(px(130.))
                                     .truncate()
-                                    .text_color(rgb(MUTED))
+                                    .text_color(ink(MUTED))
                                     .child(agent.tool.clone())
                             }))
                             .child(work_status(
@@ -195,7 +197,7 @@ impl Desktop {
                     .items_center()
                     .gap(px(6.))
                     .text_size(px(11.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .cursor_pointer()
                     .hover(|row| row.bg(rgb(0xeff2f8)))
                     .child(svg_symbol(
@@ -278,7 +280,7 @@ impl Desktop {
                     .items_center()
                     .gap(px(6.))
                     .text_size(px(11.5))
-                    .text_color(rgb(MUTED))
+                    .text_color(ink(MUTED))
                     .cursor_pointer()
                     .hover(|style| style.bg(rgb(0xeff2f8)))
                     .child(svg_symbol(
@@ -350,7 +352,7 @@ impl Desktop {
                                     .min_w_0()
                                     .text_size(px(11.5))
                                     .line_height(px(16.))
-                                    .text_color(rgb(tone))
+                                    .text_color(ink(tone))
                                     .child(item.content.clone()),
                             )
                     })),
@@ -448,7 +450,7 @@ impl Desktop {
             .items_center()
             .gap(px(5.))
             .text_size(px(12.))
-            .text_color(rgb(MUTED))
+            .text_color(ink(MUTED))
             .border_b_1()
             .border_color(rgb(0xe0e6ee))
             .child(
@@ -491,8 +493,8 @@ impl Desktop {
                         .min_w_0()
                         .max_w(px(360.))
                         .truncate()
-                        .text_color(rgb(0x8d949c))
-                        .font_family(CODE_FONT)
+                        .text_color(ink(0x8d949c))
+                        .font_family(crate::theme::code_family())
                         .text_size(px(11.))
                         .opacity(0.64)
                         .group_hover("composer-workspace", |style| style.opacity(1.))
@@ -561,7 +563,7 @@ fn work_status(label: &'static str, color: u32) -> Div {
     div()
         .flex_none()
         .text_size(px(10.5))
-        .text_color(rgb(color))
+        .text_color(ink(color))
         .child(label)
 }
 

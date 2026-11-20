@@ -54,6 +54,7 @@ impl Desktop {
         self.open_session(&summary, true, window, cx);
         self.pending_bookmark = Some(mark);
         self.restore_bookmark();
+        if self.pending_bookmark.is_some() { self.older_history(cx); }
         cx.notify();
     }
 
@@ -65,13 +66,13 @@ impl Desktop {
             return;
         };
         if self.selected.as_ref() != Some(&mark.session)
-            || s.history_partial
             || s.loading
             || self.history_reads.contains_key(&mark.session)
         {
             return;
         }
         let index = find_anchor(s, &mark.anchor);
+        if index.is_none() && s.history_partial { return; }
         self.pending_bookmark = None;
         if let Some(row) = index {
             self.jump_message(row);

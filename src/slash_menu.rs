@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -7,14 +9,14 @@ use std::{
 
 use gpui::{
     ClipboardItem, Context, Div, EntityInputHandler, Focusable, ScrollHandle, SharedString, Task,
-    Window, div, prelude::*, px, rgb, rgba,
+    Window, div, prelude::*, px,
 };
 use serde_json::{Value, json};
 
 use crate::{
     session::{Row, SessionTarget, Summary, string},
     settings::{Prepared, SkillSubmission},
-    style::{ACCENT, CODE_FONT, INK, MUTED},
+    style::{ACCENT, INK, MUTED},
 };
 
 use super::{Call, Desktop, model_controls::Picker, rpc_error};
@@ -1119,7 +1121,7 @@ impl Desktop {
                         .pb(px(3.))
                         .text_size(px(10.5))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(rgb(MUTED))
+                        .text_color(ink(MUTED))
                         .child(tr(item.group)),
                 );
             }
@@ -1181,7 +1183,7 @@ impl Desktop {
                             div()
                                 .flex_1()
                                 .text_size(px(11.))
-                                .text_color(rgb(MUTED))
+                                .text_color(ink(MUTED))
                                 .child(format!("/{command}")),
                         )
                         .child(
@@ -1209,10 +1211,10 @@ impl Desktop {
                         .overflow_y_scroll()
                         .px_2()
                         .pb_2()
-                        .font_family(CODE_FONT)
+                        .font_family(crate::theme::code_family())
                         .text_size(px(11.5))
                         .line_height(px(17.))
-                        .text_color(rgb(INK))
+                        .text_color(ink(INK))
                         .child(output.clone()),
                 ),
         )
@@ -1256,7 +1258,7 @@ pub(super) fn completion_popup(
                         .px_2()
                         .py_1()
                         .text_size(px(11.))
-                        .text_color(rgb(MUTED))
+                        .text_color(ink(MUTED))
                         .child(title),
                 )
                 .children(rows),
@@ -1407,7 +1409,7 @@ pub(super) fn completion_row(
                 .max_w(px(255.))
                 .truncate()
                 .text_size(px(13.))
-                .text_color(rgb(if accent { ACCENT } else { INK }))
+                .text_color(ink(if accent { ACCENT } else { INK }))
                 .child(title),
         )
         .child(
@@ -1416,7 +1418,7 @@ pub(super) fn completion_row(
                 .min_w_0()
                 .truncate()
                 .text_size(px(11.5))
-                .text_color(rgb(MUTED))
+                .text_color(ink(MUTED))
                 .child(detail),
         )
 }

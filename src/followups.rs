@@ -1,8 +1,10 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use gpui::{
     Context, Div, Entity, EntityInputHandler, FocusHandle, Focusable, Stateful, Window, div,
-    prelude::*, px, rgb, rgba,
+    prelude::*, px,
 };
 use gpui_component::{
     Disableable, Sizable,
@@ -521,7 +523,7 @@ impl Desktop {
                         .rounded(px(9.))
                         .shadow_lg()
                         .bg(rgb(0xffffff))
-                        .text_color(rgb(INK))
+                        .text_color(ink(INK))
                         .child(
                             div()
                                 .text_sm()
@@ -541,7 +543,7 @@ impl Desktop {
                                     .flex_wrap()
                                     .gap_1()
                                     .text_size(px(11.))
-                                    .text_color(rgb(MUTED))
+                                    .text_color(ink(MUTED))
                                     .children(editor.attachments.iter().map(|name| {
                                         div()
                                             .max_w(px(192.))
@@ -556,7 +558,7 @@ impl Desktop {
                         .children(editor.error.as_ref().map(|error| {
                             div()
                                 .text_size(px(12.))
-                                .text_color(rgb(0xa43e37))
+                                .text_color(ink(0xa43e37))
                                 .child(error.clone())
                         }))
                         .child(
@@ -569,7 +571,7 @@ impl Desktop {
                                     div()
                                         .flex_1()
                                         .text_size(px(11.))
-                                        .text_color(rgb(MUTED))
+                                        .text_color(ink(MUTED))
                                         .child(tr("保存后移至队尾"))
                                 }))
                                 .child(
@@ -766,7 +768,7 @@ impl Desktop {
             let retry_key = session_key.clone();
             let mut row = queue_row(("local-queue", index), label, entry.text.clone());
             if !entry.files.is_empty() {
-                row = row.child(div().flex_none().text_color(rgb(MUTED)).child(
+                row = row.child(div().flex_none().text_color(ink(MUTED)).child(
                     crate::i18n::format_text!("{} 个附件", "{} attachment(s)", entry.files.len()),
                 ));
             }
@@ -848,13 +850,13 @@ fn queue_row(
         .rounded(px(5.))
         .bg(rgb(0xf6f8fc))
         .text_size(px(11.5))
-        .child(div().flex_none().text_color(rgb(MUTED)).child(label))
+        .child(div().flex_none().text_color(ink(MUTED)).child(label))
         .child(
             div()
                 .flex_1()
                 .min_w_0()
                 .truncate()
-                .text_color(rgb(INK))
+                .text_color(ink(INK))
                 .child(text.into()),
         )
 }
@@ -867,7 +869,7 @@ fn queue_action(id: &'static str, label: &'static str) -> Stateful<Div> {
         .flex_none()
         .rounded(px(3.))
         .cursor_pointer()
-        .text_color(rgb(MUTED))
-        .hover(|row| row.bg(rgb(0xe6edf8)).text_color(rgb(INK)))
+        .text_color(ink(MUTED))
+        .hover(|row| row.bg(rgb(0xe6edf8)).text_color(ink(INK)))
         .child(label)
 }

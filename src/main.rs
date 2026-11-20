@@ -16,10 +16,15 @@ mod session_colors;
 mod session_todos;
 mod settings;
 mod style;
+#[cfg(windows)]
+mod terminal_appearance;
+mod theme;
+mod theme_package;
+mod wallpapers;
 
 use anyhow::Result;
 use gpui::{AppContext, KeyBinding, Size, Styled, TitlebarOptions, WindowOptions, px};
-use gpui_component::{Root, Theme, ThemeMode};
+use gpui_component::Root;
 
 gpui::actions!(
     hermes_lite,
@@ -96,19 +101,6 @@ fn main() -> Result<()> {
             {
                 eprintln!("Could not load the Hermes Lite display font: {error}");
             }
-            Theme::change(ThemeMode::Light, None, cx);
-            let theme = Theme::global_mut(cx);
-            theme.foreground = gpui::rgb(style::INK).into();
-            theme.muted_foreground = gpui::rgb(style::MUTED).into();
-            theme.accent = gpui::rgba(0x1414140d).into();
-            theme.primary = gpui::rgb(style::ACCENT).into();
-            theme.font_family = style::UI_FONT.into();
-            theme.font_size = px(style::UI_TEXT_SIZE);
-            theme.mono_font_family = style::CODE_FONT.into();
-            theme.mono_font_size = px(12.);
-            theme.primary_hover = gpui::rgb(0x2867ff).into();
-            theme.primary_active = gpui::rgb(0x124add).into();
-            theme.ring = gpui::rgb(0x185aff).into();
             let (open_find, next_find, previous_find) = if cfg!(target_os = "macos") {
                 ("cmd-f", "cmd-g", "cmd-shift-g")
             } else {

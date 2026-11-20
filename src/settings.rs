@@ -50,6 +50,12 @@ pub struct SavedWindow {
 #[serde(default)]
 pub struct DisplayPreferences {
     pub language: crate::i18n::Language,
+    pub theme: String,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub theme_backgrounds: BTreeMap<String, BackgroundPreferences>,
+    pub background: BackgroundPreferences,
+    pub terminal_background: Option<BackgroundPreferences>,
+    pub wallpaper_history: Vec<PathBuf>,
     pub message_size: u8,
     pub conversation_backdrop: bool,
     pub turn_rail: bool,
@@ -68,6 +74,11 @@ impl Default for DisplayPreferences {
     fn default() -> Self {
         Self {
             language: Default::default(),
+            theme: "default".to_owned(),
+            theme_backgrounds: BTreeMap::new(),
+            background: BackgroundPreferences::default(),
+            terminal_background: None,
+            wallpaper_history: Vec::new(),
             message_size: 13,
             conversation_backdrop: true,
             turn_rail: true,
@@ -96,13 +107,83 @@ impl DisplayPreferences {
         self.sidebar_transparency = value.min(Self::MAX_SIDEBAR_TRANSPARENCY);
     }
 
+    pub fn background(&self) -> &BackgroundPreferences {
+        match self.theme.as_str() {
+            "terminal" => self
+                .terminal_background
+                .as_ref()
+                .unwrap_or(&BackgroundPreferences::TERMINAL),
+            "default" => &self.background,
+            id => self
+                .theme_backgrounds
+                .get(id)
+                .unwrap_or(&BackgroundPreferences::DEFAULT),
+        }
+    }
+
+    pub fn background_mut(&mut self) -> &mut BackgroundPreferences {
+        match self.theme.as_str() {
+            "terminal" => self
+                .terminal_background
+                .get_or_insert(BackgroundPreferences::TERMINAL),
+            "default" => &mut self.background,
+            id => self.theme_backgrounds.entry(id.to_owned()).or_default(),
+        }
+    }
+
     pub fn window_background(&self) -> gpui::WindowBackgroundAppearance {
         if cfg!(windows) && self.sidebar_glass {
             gpui::WindowBackgroundAppearance::Blurred
+        } else if self.background().window_transparency() > 0 {
+            gpui::WindowBackgroundAppearance::Transparent
         } else {
             gpui::WindowBackgroundAppearance::Opaque
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BackgroundPreferences {
+    pub image: Option<PathBuf>,
+    pub use_theme_image: bool,
+    pub builtin_image: Option<crate::wallpapers::Builtin>,
+    pub image_opacity: u8,
+    pub window_transparency: u8,
+}
+
+impl Default for BackgroundPreferences {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl BackgroundPreferences {
+    pub const DEFAULT: Self = Self {
+        image: None,
+        builtin_image: None,
+        use_theme_image: false,
+        image_opacity: 18,
+        window_transparency: 0,
+    };
+
+    pub const TERMINAL: Self = Self {
+        image: None,
+        builtin_image: Some(crate::wallpapers::Builtin::BlueHour),
+        use_theme_image: false,
+        image_opacity: 15,
+        window_transparency: 0,
+    };
+
+    pub fn image_opacity(&self) -> u8 {
+        self.image_opacity.min(100)
+    }
+
+    pub fn window_transparency(&self) -> u8 {
+        self.window_transparency.min(Self::MAX_WINDOW_TRANSPARENCY)
+    }
+
+    pub const MAX_WINDOW_TRANSPARENCY: u8 = 60;
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -454,11 +535,14 @@ impl Settings {
             .and_then(|value| value["remote"]["url"].as_str().map(String::from))
             .unwrap_or_default()
     }
-    fn path() -> Result<PathBuf> {
+    pub fn config_dir() -> Result<PathBuf> {
         Ok(dirs::config_dir()
             .context(tr("无法定位应用配置目录"))?
-            .join("HermesDesktopLite")
-            .join("settings.json"))
+            .join("HermesDesktopLite"))
+    }
+
+    fn path() -> Result<PathBuf> {
+        Ok(Self::config_dir()?.join("settings.json"))
     }
 
     pub fn load() -> Result<Self> {
@@ -483,5 +567,33 @@ impl Settings {
 
     pub fn credential(address: &str) -> Result<keyring::Entry> {
         Ok(keyring::Entry::new("Hermes Desktop Lite", address)?)
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    #[test]
+    fn terminal_changes_preserve_the_custom_background_from_an_existing_config() {
+        let mut settings: DisplayPreferences = serde_json::from_str(
+            r#"{"background":{"image":"wallpaper.jpg","image_opacity":27,"window_transparency":13}}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.theme, "default");
+        settings.theme = "terminal".into();
+        assert_eq!(settings.background().image_opacity(), 15);
+        settings.background_mut().image_opacity = 42;
+        settings.theme = "pink".into();
+        assert_eq!(settings.background().image_opacity(), 18);
+        settings.background_mut().image_opacity = 31;
+        settings.theme = "default".into();
+        assert_eq!(settings.background().image_opacity(), 27);
+        assert_eq!(settings.background().window_transparency(), 13);
+        let saved = serde_json::to_string(&settings).unwrap();
+        let mut restored: DisplayPreferences = serde_json::from_str(&saved).unwrap();
+        restored.theme = "terminal".into();
+        assert_eq!(restored.background().image_opacity(), 42);
+        restored.theme = "pink".into();
+        assert_eq!(restored.background().image_opacity(), 31);
     }
 }

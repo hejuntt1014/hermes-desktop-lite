@@ -414,7 +414,9 @@ pub struct Session {
     pub running: bool,
     pub loading: bool,
     pub history_via_rest: bool,
+    pub history_rest_unavailable: bool,
     pub history_partial: bool,
+    pub history_window: crate::app::session_history::HistoryWindow,
     pub history_error: Option<String>,
     pub attached: bool,
     pub epoch: String,
@@ -534,6 +536,7 @@ impl Session {
             );
             self.history_via_rest = false;
             self.history_partial = false;
+            self.history_window = Default::default();
         }
         if !keep_stream {
             self.live.clear();

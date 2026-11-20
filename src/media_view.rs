@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb, rgba};
+
 use crate::i18n::text as tr;
 
 use std::{
@@ -13,7 +15,7 @@ use anyhow::Context as _;
 use gpui::{
     App, Context, Div, Entity, FocusHandle, MouseButton, MouseMoveEvent, ObjectFit, Pixels, Point,
     RenderImage, ScrollEvent, SharedString, Size, Stateful, Task, Window, div, img, point,
-    prelude::*, px, rgb, rgba, size,
+    prelude::*, px, size,
 };
 use gpui_component::tooltip::Tooltip;
 use tokio::{
@@ -304,7 +306,7 @@ impl<'a> TranscriptImages<'a> {
                                     gpui::svg()
                                         .path(icons::DOWNLOAD)
                                         .size(px(15.))
-                                        .text_color(rgb(0x536170)),
+                                        .text_color(ink(0x536170)),
                                 )
                                 .when(busy, |button| button.opacity(0.5))
                                 .on_click(move |_, _, cx| {
@@ -326,7 +328,7 @@ impl<'a> TranscriptImages<'a> {
                         .px_2()
                         .gap_1()
                         .text_size(px(11.))
-                        .text_color(rgb(0x67727e))
+                        .text_color(ink(0x67727e))
                         .child(
                             div()
                                 .w_full()
@@ -802,7 +804,7 @@ impl Desktop {
                                         .min_w(px(31.))
                                         .text_center()
                                         .text_size(px(11.))
-                                        .text_color(rgb(0x626c77))
+                                        .text_color(ink(0x626c77))
                                         .child(format!(
                                             "{} / {}",
                                             gallery.index + 1,
@@ -852,7 +854,7 @@ impl Desktop {
                                         .hover(|button| button.bg(rgb(0xf0f3f8)))
                                         .text_center()
                                         .text_size(px(12.))
-                                        .text_color(rgb(0x626c77))
+                                        .text_color(ink(0x626c77))
                                         .cursor_pointer()
                                         .tooltip(|window, cx| {
                                             Tooltip::new(tr("恢复原始缩放")).build(window, cx)
@@ -938,7 +940,7 @@ impl Desktop {
                         }))
                         .text_center()
                         .text_size(px(13.))
-                        .text_color(rgb(0xffffff))
+                        .text_color(ink(0xffffff))
                         .child(message)
                 })),
         )

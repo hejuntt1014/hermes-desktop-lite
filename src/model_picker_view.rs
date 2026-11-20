@@ -1,8 +1,10 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use gpui::{
     Anchor, AnyElement, App, Context, Div, Focusable, IntoElement, MouseButton, SharedString,
-    WeakEntity, div, prelude::*, px, rgb, uniform_list,
+    WeakEntity, div, prelude::*, px, uniform_list,
 };
 use gpui_component::{
     Disableable, Sizable,
@@ -15,7 +17,7 @@ use gpui_component::{
 
 use super::{Desktop, INK, LINE, MUTED, SURFACE, control, panel, primary, svg_symbol};
 use crate::{
-    app::model_controls::{CatalogModel, CatalogState, Choice, Picker, speed_word},
+    app::model_controls::{CatalogModel, Choice, Picker, speed_word},
     icons,
     settings::ModelChoice,
 };
@@ -75,7 +77,7 @@ fn empty_menu(label: &str) -> Div {
         .px_2()
         .py_3()
         .text_size(px(12.))
-        .text_color(rgb(MENU_MUTED))
+        .text_color(ink(MENU_MUTED))
         .child(label.to_owned())
 }
 
@@ -88,7 +90,7 @@ fn section_label(title: impl Into<SharedString>) -> Div {
         .text_size(px(10.))
         .font_weight(gpui::FontWeight::SEMIBOLD)
         .line_height(px(14.))
-        .text_color(rgb(MENU_MUTED))
+        .text_color(ink(MENU_MUTED))
         .child(title.into())
 }
 
@@ -101,7 +103,7 @@ fn option_row(id: &'static str, disabled: bool) -> gpui::Stateful<Div> {
         .flex()
         .items_center()
         .text_size(px(12.))
-        .text_color(rgb(INK))
+        .text_color(ink(INK))
         .when(disabled, |row| row.opacity(0.52))
         .when(!disabled, |row| {
             row.cursor_pointer().hover(|row| row.bg(rgb(MENU_HOVER)))
@@ -137,7 +139,7 @@ fn option_switch(
 fn checkmark() -> Div {
     div()
         .flex_none()
-        .text_color(rgb(0x485775))
+        .text_color(ink(0x485775))
         .text_size(px(13.))
         .child("✓")
 }
@@ -154,7 +156,7 @@ fn model_matches_query(entry: &CatalogModel, tokens: &[&str]) -> bool {
     tokens.iter().all(|token| terms.contains(token))
 }
 
-fn catalog_footer(desktop: &WeakEntity<Desktop>, follow_default: bool) -> Div {
+fn catalog_footer(desktop: &WeakEntity<Desktop>, follow_default: bool, refreshing: bool) -> Div {
     let refresh = desktop.clone();
     let follow = desktop.clone();
     div()
@@ -174,12 +176,18 @@ fn catalog_footer(desktop: &WeakEntity<Desktop>, follow_default: bool) -> Div {
             )
         })
         .child(
-            option_row("refresh-models", false)
-                .text_color(rgb(MENU_MUTED))
+            option_row("refresh-models", refreshing)
+                .text_color(ink(MENU_MUTED))
                 .child(svg_symbol(icons::REFRESH, 13., MENU_MUTED))
-                .child(tr("刷新模型"))
+                .child(tr(if refreshing {
+                    "正在刷新模型…"
+                } else {
+                    "刷新模型"
+                }))
                 .on_click(move |_, _, cx| {
-                    let _ = refresh.update(cx, |this, cx| this.load_models(true, cx));
+                    if !refreshing {
+                        let _ = refresh.update(cx, |this, cx| this.load_models(true, cx));
+                    }
                 }),
         )
 }
@@ -222,7 +230,7 @@ fn model_row(row: &ModelMenuRow, desktop: &WeakEntity<Desktop>, index: usize) ->
         .flex()
         .items_center()
         .text_size(px(12.))
-        .text_color(rgb(if available { INK } else { MENU_MUTED }))
+        .text_color(ink(if available { INK } else { MENU_MUTED }))
         .when(row.active || row.options_open, |element| {
             element.bg(rgb(MENU_SELECTED))
         })
@@ -330,7 +338,7 @@ fn model_tag(label: impl Into<SharedString>) -> Div {
         .px_1()
         .text_size(px(9.))
         .line_height(px(13.))
-        .text_color(rgb(MENU_MUTED))
+        .text_color(ink(MENU_MUTED))
         .child(label.into())
 }
 
@@ -523,7 +531,7 @@ impl Desktop {
                     .items_center()
                     .gap_1()
                     .text_size(px(12.))
-                    .text_color(rgb(if open { INK } else { MUTED }))
+                    .text_color(ink(if open { INK } else { MUTED }))
                     .child(div().min_w_0().truncate().child(label))
                     .child(svg_symbol(icons::CHEVRON_DOWN, 10., MENU_MUTED)),
             );
@@ -593,14 +601,12 @@ impl Desktop {
                 .workspace()
                 .and_then(|workspace| workspace.draft_launch.get(&self.key()))
                 .is_some_and(|launch| launch.model.is_some());
+        let footer = catalog_footer(desktop, follow_default, self.model_refreshing());
         let Some(catalog) = self.menu_catalog() else {
-            let label = match self.model_controls.catalogs.get(&self.model_profile()) {
-                Some(CatalogState::Failed(error)) => error.as_str(),
-                _ => tr("正在读取模型列表…"),
-            };
-            return panel
-                .child(empty_menu(label))
-                .child(catalog_footer(desktop, follow_default));
+            let label = self
+                .model_menu_error()
+                .unwrap_or_else(|| tr("正在读取模型列表…"));
+            return panel.child(empty_menu(label)).child(footer);
         };
         let query = search.read(cx).value().trim().to_lowercase();
         let tokens: Vec<_> = query.split_whitespace().collect();
@@ -680,7 +686,7 @@ impl Desktop {
                 .w_full(),
             );
         }
-        panel = panel.child(catalog_footer(desktop, follow_default));
+        panel = panel.child(footer);
         let details = self
             .model_controls
             .inspected_model
@@ -857,7 +863,7 @@ impl Desktop {
                 .child(
                     div()
                         .text_size(px(12.))
-                        .text_color(rgb(MUTED))
+                        .text_color(ink(MUTED))
                         .child(prompt.message.clone()),
                 )
                 .child(

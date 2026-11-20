@@ -48,6 +48,11 @@ mod workspace_files;
 #[path = "workspace_scope.rs"]
 mod workspace_scope;
 use workspace_files::{FileDownload, WorkspaceFiles};
+#[path = "theme_editor.rs"]
+mod theme_editor;
+#[path = "background_view.rs"]
+mod background_view;
+use background_view::BackgroundView;
 #[path = "settings_view.rs"]
 mod settings_view;
 use settings_view::SettingsView;
@@ -81,7 +86,7 @@ mod rewrite;
 #[path = "session_export.rs"]
 mod session_export;
 #[path = "session_history.rs"]
-mod session_history;
+pub(crate) mod session_history;
 #[path = "session_ops.rs"]
 mod session_ops;
 use rewrite::RewriteEditor;
@@ -123,7 +128,11 @@ enum Call {
         profile: String,
     },
     Replay(String),
-    Resume(String),
+    Resume {
+        key: String,
+        refresh_history: bool,
+        paged: bool,
+    },
     RunningReplay(String, u64),
     AttachFile(String, Prepared),
     Submit(String, Prepared),
@@ -134,7 +143,7 @@ enum Call {
     ReasoningDisplay(slash_menu::Scope),
     WorkStatus(activity::WorkRequest),
     WorkRoster(String),
-    ModelOptions(model_controls::MenuScope, bool),
+    ModelOptions(model_controls::MenuScope, model_controls::MenuRequest),
     ModelTiers(String, crate::settings::ModelChoice),
     ApprovalMode(String, bool),
     ContextUsage(String, u64, u64),
@@ -162,6 +171,7 @@ enum TabClose {
 }
 
 pub struct Desktop {
+    window_handle: gpui::AnyWindowHandle,
     runtime: Handle,
     settings: Settings,
     gateway: Option<Gateway>,
@@ -214,6 +224,8 @@ pub struct Desktop {
     _subscriptions: Vec<Subscription>,
     settings_open: bool,
     settings_view: SettingsView,
+    background_view: BackgroundView,
+    theme_editor: Option<theme_editor::ThemeEditor>,
     files: WorkspaceFiles,
     review: Review,
     file_download: FileDownload,
@@ -257,7 +269,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) -> Self {
         let banner = loaded.as_ref().err().map(|err| err.to_string().into());
-        let settings = loaded.unwrap_or_default();
+        let mut settings = loaded.unwrap_or_default();
         let sidebar_open = settings.display.sidebar_open;
         let hide_reasoning =
             settings.display.reasoning == crate::settings::ReasoningVisibility::Hidden;
@@ -340,7 +352,9 @@ impl Desktop {
                 _ => {}
             }),
         ];
+        let background_view = BackgroundView::new(&mut settings.display, window, cx);
         let mut this = Self {
+            window_handle: window.window_handle(),
             runtime,
             address,
             token,
@@ -353,6 +367,8 @@ impl Desktop {
             clipboard_pastes: HashMap::new(),
             _subscriptions: subscriptions,
             settings_open: false,
+            background_view,
+            theme_editor: None,
             settings_view: SettingsView::new(settings.display.sidebar_transparency(), cx),
             files: WorkspaceFiles::new(cx.focus_handle()),
             review: Review::new(cx.focus_handle()),
@@ -439,6 +455,9 @@ impl Desktop {
                     this.following = following;
                     this.turn_rail.jumped = None;
                     this.reading_moved(cx);
+                    if this.list.logical_scroll_top().item_ix <= 3 {
+                        this.older_history(cx);
+                    }
                     if this.sync_turn_rail() || changed {
                         cx.notify();
                     }
@@ -469,6 +488,7 @@ impl Desktop {
             });
             true
         });
+        this.restore_background(window, cx);
         this.restore_gateway(window, cx);
         this
     }
@@ -727,9 +747,7 @@ impl Desktop {
             self.visible_count = new_count;
             self.timeline_raw_count = Some(raw_count);
         }
-        if !session.is_some_and(|session| session.history_partial) {
-            self.apply_reading_restore();
-        }
+        self.apply_reading_restore();
         if self.following && self.visible_count > 0 {
             self.list.scroll_to(ListOffset {
                 item_ix: self.visible_count,
@@ -796,6 +814,9 @@ impl Desktop {
                 }
             }
             self.sync_list();
+            if self.pending_reading.is_some() {
+                self.older_history(cx);
+            }
         } else {
             self.composer
                 .update(cx, |field, cx| field.focus(window, cx));
@@ -1187,21 +1208,17 @@ impl Desktop {
                 .find(|tab| tab.session.as_deref() == Some(key) && !tab.profile.is_empty())
                 .map(|tab| tab.profile.clone())
         });
-        let pending_mutation = self.workspace().is_some_and(|workspace| {
-            workspace.pending_submissions.contains_key(key)
-                || workspace.pending_rewrites.contains_key(key)
-        });
         let session = self.sessions.entry(key.to_owned()).or_default();
         let mut params = json!({"session_id":key});
-        if !authoritative
-            && !pending_mutation
-            && (session.history_via_rest || self.history_reads.contains_key(key))
-        {
+        let paged = !session.history_rest_unavailable;
+        if paged {
             params["defer_history"] = json!(true);
             params["omit_messages"] = json!(true);
         }
         if self.canonical {
             params["display_projection"] = json!(true);
+        } else {
+            params["source"] = json!("desktop");
         }
         if let Some(summary) = self
             .rows
@@ -1218,7 +1235,12 @@ impl Desktop {
         if !session.profile.is_empty() {
             params["profile"] = json!(session.profile);
         }
-        if !self.call("session.resume", params, Call::Resume(key.to_owned())) {
+        let call = Call::Resume {
+            key: key.to_owned(),
+            refresh_history: authoritative,
+            paged,
+        };
+        if !self.call("session.resume", params, call) {
             self.sessions.get_mut(key).unwrap().loading = false;
         }
     }
@@ -1237,6 +1259,9 @@ impl Desktop {
                 version,
             } => {
                 self.out = Some(out);
+                for session in self.sessions.values_mut() {
+                    session.history_rest_unavailable = false;
+                }
                 self.gateway_version = version;
                 self.refresh_slash_connection(cx);
                 self.refresh_reference_connection(cx);
@@ -1304,11 +1329,13 @@ impl Desktop {
                 }
             }
             Update::Frame(frame) => self.frame(frame, window, cx),
-            Update::Timeout(id) => {
-                if let Some(call) = self.pending.remove(&id) {
-                    self.lost(call, true);
+            Update::Timeout(id) => match self.pending.remove(&id) {
+                Some(Call::ModelOptions(scope, request)) => {
+                    self.fallback_model_options(scope, request, cx);
                 }
-            }
+                Some(call) => self.lost(call, true),
+                None => {}
+            },
         }
     }
 
@@ -1391,7 +1418,7 @@ impl Desktop {
             }
             Call::WorkStatus(request) => self.finish_work(request, &Value::Null, None),
             Call::WorkRoster(profile) => self.finish_work_roster(&profile, &Value::Null, None),
-            Call::ModelOptions(scope, _) => self.cancel_model_options(&scope),
+            Call::ModelOptions(scope, request) => self.cancel_model_options(&scope, request),
             Call::ApprovalMode(profile, write) => self.lose_approval_mode(&profile, write),
             Call::GatewayInference => self.finish_gateway_inference(None),
             Call::AttachFile(key, _) => {
@@ -1407,9 +1434,9 @@ impl Desktop {
                     self.attach(&key, true);
                 }
             }
-            Call::Replay(key) if timeout => self.resume(&key, false),
+            Call::Replay(key) if timeout => self.resume(&key, true),
             Call::RunningReplay(key, _) => self.end_attach(&key),
-            Call::Resume(key) | Call::Replay(key) => {
+            Call::Resume { key, .. } | Call::Replay(key) => {
                 if let Some(session) = self.sessions.get_mut(&key) {
                     session.loading = false;
                     if timeout {
@@ -1439,7 +1466,7 @@ impl Desktop {
             if !self.pending.values().any(|call| {
                 matches!(
                     call,
-                    Call::Create { .. } | Call::Branch { .. } | Call::Resume(_)
+                    Call::Create { .. } | Call::Branch { .. } | Call::Resume { .. }
                 )
             }) {
                 self.unbound.clear();
@@ -1498,7 +1525,7 @@ impl Desktop {
                 if self.pending.values().any(|call| {
                     matches!(
                         call,
-                        Call::Resume(_) | Call::Branch { .. } | Call::Create { .. }
+                        Call::Resume { .. } | Call::Branch { .. } | Call::Create { .. }
                     )
                 }) {
                     self.unbound
@@ -1589,7 +1616,7 @@ impl Desktop {
                 } else if self.pending.values().any(|call| {
                     matches!(
                         call,
-                        Call::Resume(_) | Call::Branch { .. } | Call::Create { .. }
+                        Call::Resume { .. } | Call::Branch { .. } | Call::Create { .. }
                     )
                 }) {
                     self.unbound.entry(sid.to_owned()).or_default().push(frame);
@@ -1652,8 +1679,8 @@ impl Desktop {
                     cx.notify();
                 }
             }
-            Call::ModelOptions(scope, refresh) => {
-                self.finish_model_options(scope, refresh, response, error, cx)
+            Call::ModelOptions(scope, request) => {
+                self.finish_model_options(scope, request, response, error, cx)
             }
             Call::ModelTiers(key, model) if error.is_none() => {
                 self.finish_model_tiers(key, model, response)
@@ -1721,9 +1748,9 @@ impl Desktop {
                 } else {
                     session.seq = 0;
                 }
-                self.resume(&key, false);
+                self.resume(&key, true);
             }
-            Call::Resume(key) => {
+            Call::Resume { key, refresh_history, paged } => {
                 if self.selected.as_deref() == Some(&key)
                     && self.pending_reading.is_none()
                     && error.is_none()
@@ -1732,6 +1759,19 @@ impl Desktop {
                     self.pending_reading = self.reading_position();
                 }
                 self.resumed(&key, response, error, window, cx);
+                if error.is_none()
+                    && (response["messages_omitted"] == true || response["hydrating"] == true)
+                {
+                    if paged && self.sessions[&key].history_rest_unavailable {
+                        self.attach(&key, true);
+                    } else if refresh_history {
+                        self.history_reads.remove(&key);
+                        self.read_history_page(&key, false, cx);
+                    } else {
+                        self.prefetch_history(&key, cx);
+                    }
+                    self.confirm_history_receipts(&key, window, cx);
+                }
                 if error.is_none() {
                     self.drain_followups(&key, cx);
                     self.apply_ready_model_preset(&key, cx);
@@ -1803,7 +1843,11 @@ impl Desktop {
         if error.is_some() || string(response, "session_id").is_empty() {
             session.loading = false;
             session.attached = false;
-            session.error = Some(error.map_or_else(|| tr("无法读取会话").into(), rpc_error));
+            session.error = Some(match error {
+                Some(error) if error["code"] == 4130 => tr("会话记录超过恢复上限。可查看历史，或新建会话继续。").into(),
+                Some(error) => rpc_error(error),
+                None => tr("无法读取会话").into(),
+            });
             return;
         }
         let keep = self.canonical

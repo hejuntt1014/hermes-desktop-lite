@@ -1,3 +1,5 @@
+use crate::theme::{ink, rgb};
+
 use crate::i18n::text as tr;
 
 use std::{env, sync::Arc};
@@ -6,7 +8,7 @@ use anyhow::{Context as _, Result, bail};
 use gpui::{
     Anchor, ClipboardItem, Context, Div, FocusHandle, FontWeight, ListHorizontalSizingBehavior,
     ObjectFit, RenderImage, ScrollHandle, SharedString, UniformListScrollHandle, Window, div, img,
-    prelude::*, px, rgb, uniform_list,
+    prelude::*, px, uniform_list,
 };
 use gpui_component::{
     Sizable,
@@ -23,7 +25,7 @@ use crate::{
     icons,
     media::{ChatImage, load_image},
     session::string,
-    style::{ACCENT, CODE_FONT, INK, MUTED},
+    style::{ACCENT, INK, MUTED},
 };
 
 use super::{
@@ -623,7 +625,7 @@ impl Desktop {
                                 .rounded(px(3.))
                                 .cursor_pointer()
                                 .text_size(px(12.))
-                                .text_color(rgb(0x354459))
+                                .text_color(ink(0x354459))
                                 .when(active, |row| row.bg(rgb(0xe5eefc)))
                                 .hover(|row| row.bg(rgb(0xeaf0f8)))
                                 .when(loading, |row| row.opacity(0.65))
@@ -684,7 +686,7 @@ impl Desktop {
                     .px_2()
                     .py_2()
                     .text_size(px(11.))
-                    .text_color(rgb(0x6c7786))
+                    .text_color(ink(0x6c7786))
                     .child(status)
             }));
         div()
@@ -777,7 +779,7 @@ impl Desktop {
                 .min_w_0()
                 .truncate()
                 .text_size(px(11.5))
-                .text_color(rgb(INK))
+                .text_color(ink(INK))
                 .when_some(
                     folder_path.map(|path| SharedString::from(path.to_owned())),
                     |label, path| {
@@ -840,7 +842,7 @@ impl Desktop {
             .border_b_1()
             .border_color(rgb(0xe5eaf2))
             .text_size(px(12.))
-            .text_color(rgb(0x35455b))
+            .text_color(ink(0x35455b))
             .child(symbol(
                 if matches!(self.files.preview, Some(FilePreview::Image { .. })) {
                     icons::PHOTO
@@ -886,7 +888,7 @@ impl Desktop {
                             .max_w(px(270.))
                             .truncate()
                             .text_size(px(11.))
-                            .text_color(rgb(0x68758b))
+                            .text_color(ink(0x68758b))
                             .child(status.label())
                     }),
             )
@@ -941,7 +943,7 @@ impl Desktop {
                                 .px_3()
                                 .py_2()
                                 .text_size(px(11.))
-                                .text_color(rgb(0x68778b))
+                                .text_color(ink(0x68778b))
                                 .child(tr("仅显示文件开头")),
                         )
                     })
@@ -1025,7 +1027,7 @@ impl Desktop {
                     .px_2()
                     .border_b_2()
                     .border_color(rgb(if active { ACCENT } else { 0xf7f9fc }))
-                    .text_color(rgb(if active { INK } else { MUTED }))
+                    .text_color(ink(if active { INK } else { MUTED }))
                     .text_size(px(12.))
                     .when(!active, |tab| {
                         tab.cursor_pointer().hover(|tab| tab.bg(rgb(0xecf1f7)))
@@ -1146,7 +1148,7 @@ impl Desktop {
                         .h(px(21.))
                         .label(label)
                         .when(active, |button| {
-                            button.bg(rgb(0xe9f0fc)).text_color(rgb(ACCENT))
+                            button.bg(rgb(0xe9f0fc)).text_color(ink(ACCENT))
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.files.markdown_source = source;
@@ -1192,7 +1194,7 @@ impl Desktop {
             .py_3()
             .text_size(px(13.))
             .line_height(px(19.))
-            .text_color(rgb(INK))
+            .text_color(ink(INK))
             .overflow_y_scroll()
             .track_scroll(&self.files.markdown_scroll);
         for (index, section) in document.sections.iter().enumerate() {
@@ -1263,7 +1265,7 @@ impl Desktop {
                                         .items_center()
                                         .gap_1()
                                         .text_size(px(11.))
-                                        .text_color(rgb(MUTED))
+                                        .text_color(ink(MUTED))
                                         .child(symbol(icon, 12.))
                                         .child(
                                             div()
@@ -1314,7 +1316,7 @@ fn source_preview(
                         .px_2()
                         .flex()
                         .items_center()
-                        .font_family(CODE_FONT)
+                        .font_family(crate::theme::code_family())
                         .text_size(px(12.))
                         .child(
                             div()
@@ -1322,14 +1324,14 @@ fn source_preview(
                                 .flex_none()
                                 .pr_2()
                                 .text_right()
-                                .text_color(rgb(0x8e9bad))
+                                .text_color(ink(0x8e9bad))
                                 .child((index + 1).to_string()),
                         )
                         .child(
                             div()
                                 .flex_none()
                                 .whitespace_nowrap()
-                                .text_color(rgb(0x2d3d53))
+                                .text_color(ink(0x2d3d53))
                                 .child(line.clone()),
                         ),
                 )
@@ -1362,7 +1364,7 @@ fn preview_status(status: Option<SharedString>) -> Div {
         .items_center()
         .justify_center()
         .text_size(px(12.))
-        .text_color(rgb(0x69778b))
+        .text_color(ink(0x69778b))
         .children(status)
 }
 
