@@ -19,20 +19,51 @@ pub(super) fn at_bottom(list: &gpui::ListState) -> bool {
     let count = list.item_count();
     let viewport = list.viewport_bounds();
     // Unmeasured rows count as zero pixels in scrollbar estimates.
-    count > 0 && viewport.size.height > gpui::px(0.) && (top..count).all(|ix| {
-        list.bounds_for_item(ix).is_some_and(|bounds| bounds.bottom() <= viewport.bottom() + gpui::px(1.))
+    count > 0
+        && viewport.size.height > gpui::px(0.)
+        && (top..count).all(|ix| {
+            list.bounds_for_item(ix)
+                .is_some_and(|bounds| bounds.bottom() <= viewport.bottom() + gpui::px(1.))
+        })
+}
+
+pub(super) struct ScrollNavigation {
+    pub following: bool,
+    pub load_older: bool,
+}
+
+pub(super) fn wheel_navigation(
+    list: &gpui::ListState,
+    y: gpui::Pixels,
+) -> Option<ScrollNavigation> {
+    (y != gpui::px(0.)).then(|| ScrollNavigation {
+        following: y < gpui::px(0.) && at_bottom(list),
+        load_older: y > gpui::px(0.) && list.logical_scroll_top().item_ix <= 3,
     })
 }
 
+#[cfg(test)]
+#[path = "timeline_scroll_tests.rs"]
+mod scroll_tests;
+
 pub(super) fn splice_older_page(
-    list: &gpui::ListState, before: &[TimelineItem], after: &[TimelineItem], shift: usize,
+    list: &gpui::ListState,
+    before: &[TimelineItem],
+    after: &[TimelineItem],
+    shift: usize,
 ) -> bool {
     // Tool groups can straddle the page boundary. Keep the suffix whose row
     // ranges moved together, including GPUI's measured heights and pixel anchor.
-    let retained = before.iter().rev().zip(after.iter().rev()).take_while(|(old, new)| {
-        old.receipt == new.receipt && old.rows.start + shift == new.rows.start
-            && old.rows.end + shift == new.rows.end
-    }).count();
+    let retained = before
+        .iter()
+        .rev()
+        .zip(after.iter().rev())
+        .take_while(|(old, new)| {
+            old.receipt == new.receipt
+                && old.rows.start + shift == new.rows.start
+                && old.rows.end + shift == new.rows.end
+        })
+        .count();
     let removed = before.len() - retained;
     let inserted = after.len() - retained;
     let top = list.logical_scroll_top().item_ix;

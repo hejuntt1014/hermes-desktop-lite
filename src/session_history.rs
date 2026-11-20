@@ -309,7 +309,9 @@ impl Desktop {
         }
         session.history_window = history;
         merged?;
-        let inserted_rows = older.then(|| session.count().checked_sub(old_row_count)).flatten();
+        let inserted_rows = older
+            .then(|| session.count().checked_sub(old_row_count))
+            .flatten();
         if let (Some(expanded), Some(groups)) = (expanded, groups) {
             self.expanded = expanded
                 .iter()

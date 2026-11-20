@@ -1501,17 +1501,19 @@ impl Desktop {
             .overflow_hidden()
             .on_scroll(cx.listener(|this, event: &gpui::ScrollEvent, _, cx| {
                 let delta = event.delta.pixel_delta(px(20.)).y;
-                if delta == px(0.) { return; }
-                let older = delta > px(0.);
-                let following = !older && this.at_latest();
-                let changed = this.following != following;
-                this.following = following;
+                let Some(nav) = super::timeline::wheel_navigation(&this.list, delta) else {
+                    return;
+                };
+                let changed = this.following != nav.following;
+                this.following = nav.following;
                 this.turn_rail.jumped = None;
                 this.reading_moved(cx);
-                if older && this.list.logical_scroll_top().item_ix <= 3 {
+                if nav.load_older {
                     this.older_history(cx);
                 }
-                if this.sync_turn_rail() || changed { cx.notify(); }
+                if this.sync_turn_rail() || changed {
+                    cx.notify();
+                }
             }))
             .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
                 if this.pane_resize.is_none() && event.dragging() && !this.at_latest() {

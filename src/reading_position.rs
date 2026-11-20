@@ -31,12 +31,7 @@ impl Desktop {
             .and_then(|turn| self.timeline.get(turn.item))
             .map(|item| make_anchor(session, item.rows.start))
             .filter(|turn| turn.row != row);
-        let offset = match row_ref(session, row) {
-            Some(Row::User(_) | Row::Answer(_)) if cursor.item_ix < self.timeline.len() => {
-                f32::from(cursor.offset_in_item).clamp(0., 1500.)
-            }
-            _ => 0.,
-        };
+        let offset = f32::from(cursor.offset_in_item).max(0.);
         Some(ReadingPosition {
             anchor: make_anchor(session, row),
             turn,
@@ -106,7 +101,7 @@ impl Desktop {
         let row = exact.or_else(fallback).unwrap_or(position.anchor.row);
         if let Some(item_ix) = self.visible_item_for(row) {
             let offset = if exact.is_some() && position.offset.is_finite() {
-                position.offset.clamp(0., 1500.)
+                position.offset.max(0.)
             } else {
                 0.
             };

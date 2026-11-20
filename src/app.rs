@@ -720,7 +720,12 @@ impl Desktop {
             if let Some(shift) = prepended_rows {
                 preserved = timeline::splice_older_page(&self.list, &self.timeline, &items, shift);
             } else {
-                let kept = self.timeline.iter().zip(&items).take_while(|(old, new)| old == new).count();
+                let kept = self
+                    .timeline
+                    .iter()
+                    .zip(&items)
+                    .take_while(|(old, new)| old == new)
+                    .count();
                 if kept != self.visible_count || new_count != self.visible_count {
                     self.list.splice(kept..self.visible_count, new_count - kept);
                 }
