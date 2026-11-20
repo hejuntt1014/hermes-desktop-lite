@@ -550,7 +550,7 @@ impl Desktop {
                     json!({"outcome":"submitted", "answers":answers})
                 };
                 if self.out.as_ref().is_some_and(|out| {
-                    out.send(json!({"jsonrpc":"2.0","id":id,"result":result}))
+                    out.send(json!({"jsonrpc":"2.0","id":id,"result":result}).into())
                         .is_ok()
                 }) {
                     self.sessions

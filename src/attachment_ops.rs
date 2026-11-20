@@ -1,21 +1,14 @@
 use crate::i18n::text as tr;
 
-use std::{
-    fs::File,
-    io::{Read, Result as IoResult},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::Context as _;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gpui::{Context, PathPromptOptions, SharedString};
 use serde_json::{Value, json};
 
 use crate::media::{attachment_ref, is_image_file, prepare_local_image, upload_chat_image};
 
 use super::{Call, Desktop, Prepared, rpc_error, string};
-
-const MAX_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
 impl Desktop {
     pub(super) fn draft_files(&self) -> Vec<PathBuf> {
@@ -170,7 +163,13 @@ impl Desktop {
             self.attach_picture(key, prepared, path, name, runtime_id, cx);
             return;
         }
-        let read = self.runtime.spawn_blocking(move || file_data_url(&path));
+        let read = self.runtime.spawn(async move {
+            let file = tokio::fs::File::open(path).await?;
+            if !file.metadata().await?.is_file() {
+                return Err(std::io::ErrorKind::InvalidInput.into());
+            }
+            Ok::<_, std::io::Error>(file)
+        });
         cx.spawn(async move |view, cx| {
             let result = read.await;
             let _ = view.update(cx, |this, cx| {
@@ -187,23 +186,18 @@ impl Desktop {
                     .is_some_and(|session| session.runtime == runtime_id && session.submitting)
                 {
                     this.attachment_failed(&key, tr("会话已更新，请重新发送附件").into());
-                } else if let Ok(Ok(data_url)) = result {
-                    params["data_url"] = Value::String(data_url);
+                } else if let Ok(Ok(file)) = result {
                     params["name"] = json!(name);
-                    if !this.call(
+                    if !this.send_call(
                         "file.attach",
                         params,
+                        Some(file),
                         Call::AttachFile(key.clone(), prepared),
                     ) {
                         this.attachment_failed(&key, tr("未能上传附件").into());
                     }
                 } else {
-                    let reason = match result {
-                        Ok(Err(error)) if error.kind() == std::io::ErrorKind::FileTooLarge => {
-                            tr("附件大小超过 25 MB")
-                        }
-                        _ => tr("无法读取附件"),
-                    };
+                    let reason = tr("无法读取附件");
                     this.attachment_failed(&key, format!("{reason} · {name}"));
                 }
                 cx.notify();
@@ -342,25 +336,6 @@ pub(in crate::app) fn file_name(path: &Path) -> String {
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned()
-}
-
-fn file_data_url(path: &Path) -> IoResult<String> {
-    let file = File::open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file() {
-        return Err(std::io::ErrorKind::InvalidInput.into());
-    }
-    if metadata.len() > MAX_FILE_BYTES {
-        return Err(std::io::ErrorKind::FileTooLarge.into());
-    }
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err(std::io::ErrorKind::FileTooLarge.into());
-    }
-    let mut url = String::from("data:application/octet-stream;base64,");
-    STANDARD.encode_string(bytes, &mut url);
-    Ok(url)
 }
 
 pub(in crate::app) fn display_file_refs(text: &str) -> (Vec<SharedString>, &str) {

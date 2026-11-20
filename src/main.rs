@@ -4,6 +4,7 @@ mod app;
 mod auth;
 mod background_notice;
 mod command_receipt;
+mod file_upload;
 mod gateway;
 mod i18n;
 mod icons;

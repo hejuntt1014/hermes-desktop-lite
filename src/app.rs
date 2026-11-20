@@ -15,7 +15,7 @@ use tokio::{runtime::Handle, sync::mpsc};
 use uuid::Uuid;
 
 use crate::{
-    gateway::{Gateway, Update},
+    gateway::{Gateway, Outgoing, Update},
     session::{BranchPoint, PromptRoute, Row, Session, SessionTarget, Summary, string},
     session_activity::Kind as WorkKind,
     settings::{ChatTab, LaunchOptions, Prepared, ReadingPosition, Settings, Workspace},
@@ -48,10 +48,10 @@ mod workspace_files;
 #[path = "workspace_scope.rs"]
 mod workspace_scope;
 use workspace_files::{FileDownload, WorkspaceFiles};
-#[path = "theme_editor.rs"]
-mod theme_editor;
 #[path = "background_view.rs"]
 mod background_view;
+#[path = "theme_editor.rs"]
+mod theme_editor;
 use background_view::BackgroundView;
 #[path = "settings_view.rs"]
 mod settings_view;
@@ -176,7 +176,7 @@ pub struct Desktop {
     settings: Settings,
     gateway: Option<Gateway>,
     connection: Option<Task<()>>,
-    out: Option<mpsc::UnboundedSender<Value>>,
+    out: Option<mpsc::UnboundedSender<Outgoing>>,
     canonical: bool,
     clarify_batch: bool,
     process_epoch: String,
@@ -1149,12 +1149,28 @@ impl Desktop {
     }
 
     fn call(&mut self, method: &str, params: Value, action: Call) -> bool {
+        self.send_call(method, params, None, action)
+    }
+
+    fn send_call(
+        &mut self,
+        method: &str,
+        params: Value,
+        attachment: Option<tokio::fs::File>,
+        action: Call,
+    ) -> bool {
         let Some(out) = &self.out else { return false };
         self.request_id = self.request_id.wrapping_add(1);
         let id = self.request_id;
         let mut frame = json!({"jsonrpc":"2.0","id":id,"method":method});
         frame["params"] = params;
-        if out.send(frame).is_err() {
+        if out
+            .send(Outgoing {
+                message: frame,
+                attachment,
+            })
+            .is_err()
+        {
             return false;
         }
         self.pending.insert(id, action);
@@ -1614,7 +1630,7 @@ impl Desktop {
                     self.unbound.entry(sid.to_owned()).or_default().push(frame);
                 }
             } else if let Some(out) = &self.out {
-                let _ = out.send(json!({"jsonrpc":"2.0","id":frame["id"],"error":{"code":-32601,"message":"Unsupported client request"}}));
+                let _ = out.send(json!({"jsonrpc":"2.0","id":frame["id"],"error":{"code":-32601,"message":"Unsupported client request"}}).into());
             }
         }
     }
@@ -1742,7 +1758,11 @@ impl Desktop {
                 }
                 self.resume(&key, true);
             }
-            Call::Resume { key, refresh_history, paged } => {
+            Call::Resume {
+                key,
+                refresh_history,
+                paged,
+            } => {
                 if self.selected.as_deref() == Some(&key)
                     && self.pending_reading.is_none()
                     && error.is_none()
@@ -1836,7 +1856,9 @@ impl Desktop {
             session.loading = false;
             session.attached = false;
             session.error = Some(match error {
-                Some(error) if error["code"] == 4130 => tr("会话记录超过恢复上限。可查看历史，或新建会话继续。").into(),
+                Some(error) if error["code"] == 4130 => {
+                    tr("会话记录超过恢复上限。可查看历史，或新建会话继续。").into()
+                }
                 Some(error) => rpc_error(error),
                 None => tr("无法读取会话").into(),
             });
@@ -2478,7 +2500,7 @@ impl Desktop {
                 let result = json!({"choice":choice});
                 if let Some(out) = &self.out {
                     if out
-                        .send(json!({"jsonrpc":"2.0","id":id,"result":result}))
+                        .send(json!({"jsonrpc":"2.0","id":id,"result":result}).into())
                         .is_ok()
                     {
                         self.sessions

@@ -54,7 +54,9 @@ impl fmt::Display for HttpFailure {
 impl std::error::Error for HttpFailure {}
 
 pub(crate) fn missing_history_endpoint(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<HttpFailure>().is_some_and(HttpFailure::missing_endpoint)
+    error
+        .downcast_ref::<HttpFailure>()
+        .is_some_and(HttpFailure::missing_endpoint)
 }
 
 impl HttpFailure {
@@ -1058,7 +1060,7 @@ impl Gateway {
         .await
         .unwrap_or(Ok(false))?;
 
-        let (out, mut outgoing) = mpsc::unbounded_channel::<Value>();
+        let (out, mut outgoing) = mpsc::unbounded_channel::<Outgoing>();
         let epoch = ready["replay_epoch"]
             .as_str()
             .unwrap_or_default()
@@ -1090,12 +1092,19 @@ impl Gateway {
         loop {
             tokio::select! {
                 cmd = outgoing.recv() => {
-                    let Some(frame) = cmd else { return Ok(false) };
+                    let Some(Outgoing { message: frame, attachment }) = cmd else { return Ok(false) };
+                    if let Some(file) = attachment {
+                        let id = frame["id"].as_u64().context("file.attach request ID is missing")?;
+                        crate::file_upload::send(&mut socket, id, &frame["params"], file).await?;
+                        // A streamed transfer may take longer than the idle threshold.
+                        last_frame = time::Instant::now();
+                    } else {
+                        time::timeout(TIMEOUT, socket.send(Message::Text(frame.to_string().into()))).await??;
+                    }
                     if let Some(id) = frame["id"].as_u64().filter(|_| frame["method"].is_string()) {
                         let seconds = if matches!(frame["method"].as_str(), Some("approval.respond" | "clarify.respond")) { 300 } else { 120 };
                         deadlines.insert(id, time::Instant::now() + Duration::from_secs(seconds));
                     }
-                    time::timeout(TIMEOUT, socket.send(Message::Text(frame.to_string().into()))).await??;
                 }
                 frame = socket.next() => {
                     let Some(frame) = frame else { return Ok(true) };
@@ -1148,10 +1157,24 @@ pub struct HistoryPage {
     pub next: Option<usize>,
 }
 
+pub struct Outgoing {
+    pub message: Value,
+    pub attachment: Option<tokio::fs::File>,
+}
+
+impl From<Value> for Outgoing {
+    fn from(message: Value) -> Self {
+        Self {
+            message,
+            attachment: None,
+        }
+    }
+}
+
 pub enum Update {
     SignIn(String),
     Online {
-        out: mpsc::UnboundedSender<Value>,
+        out: mpsc::UnboundedSender<Outgoing>,
         canonical: bool,
         clarify_batch: bool,
         epoch: String,

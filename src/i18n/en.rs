@@ -147,8 +147,12 @@ pub(super) fn translate(source: &str) -> &str {
         "刷新" => "Refresh",
         "刷新变更" => "Refresh changes",
         "刷新定时任务" => "Refresh scheduled tasks",
-        "会话记录超过恢复上限。可查看历史，或新建会话继续。" => "This conversation exceeds the resume limit. View its history or start a new chat to continue.",
-        "会话历史已更新，请重新读取" => "Conversation history changed. Reload to continue.",
+        "会话记录超过恢复上限。可查看历史，或新建会话继续。" => {
+            "This conversation exceeds the resume limit. View its history or start a new chat to continue."
+        }
+        "会话历史已更新，请重新读取" => {
+            "Conversation history changed. Reload to continue."
+        }
         "刷新模型" => "Refresh models",
         "正在刷新模型…" => "Refreshing models…",
         "刷新目录" => "Refresh directory",
@@ -934,7 +938,6 @@ pub(super) fn translate(source: &str) -> &str {
         "重试读取结果" => "Retry loading result",
         "键盘快捷键" => "Keyboard shortcuts",
         "附件" => "Attachments",
-        "附件大小超过 25 MB" => "Attachment exceeds 25 MB",
         "附件路径不可用，无法重新发送这条消息" => {
             "The attachment path is unavailable. This message could not be resent."
         }
