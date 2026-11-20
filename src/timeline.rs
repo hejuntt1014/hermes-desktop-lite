@@ -14,6 +14,34 @@ pub(super) struct TimelineItem {
     pub receipt: Option<usize>,
 }
 
+pub(super) fn at_bottom(list: &gpui::ListState) -> bool {
+    let top = list.logical_scroll_top().item_ix;
+    let count = list.item_count();
+    let viewport = list.viewport_bounds();
+    // Unmeasured rows count as zero pixels in scrollbar estimates.
+    count > 0 && viewport.size.height > gpui::px(0.) && (top..count).all(|ix| {
+        list.bounds_for_item(ix).is_some_and(|bounds| bounds.bottom() <= viewport.bottom() + gpui::px(1.))
+    })
+}
+
+pub(super) fn splice_older_page(
+    list: &gpui::ListState, before: &[TimelineItem], after: &[TimelineItem], shift: usize,
+) -> bool {
+    // Tool groups can straddle the page boundary. Keep the suffix whose row
+    // ranges moved together, including GPUI's measured heights and pixel anchor.
+    let retained = before.iter().rev().zip(after.iter().rev()).take_while(|(old, new)| {
+        old.receipt == new.receipt && old.rows.start + shift == new.rows.start
+            && old.rows.end + shift == new.rows.end
+    }).count();
+    let removed = before.len() - retained;
+    let inserted = after.len() - retained;
+    let top = list.logical_scroll_top().item_ix;
+    if removed != 0 || inserted != 0 {
+        list.splice(0..removed, inserted);
+    }
+    (removed..before.len()).contains(&top)
+}
+
 #[derive(Clone)]
 pub(super) struct TurnMarker {
     pub item: usize,

@@ -445,25 +445,6 @@ impl Desktop {
         };
         #[cfg(not(windows))]
         this.register_notification_handler(window, cx);
-        let weak = cx.entity().downgrade();
-        this.list.set_scroll_handler(move |_, _, app| {
-            let weak = weak.clone();
-            app.defer(move |app| {
-                let _ = weak.update(app, |this, cx| {
-                    let following = this.at_latest();
-                    let changed = this.following != following;
-                    this.following = following;
-                    this.turn_rail.jumped = None;
-                    this.reading_moved(cx);
-                    if this.list.logical_scroll_top().item_ix <= 3 {
-                        this.older_history(cx);
-                    }
-                    if this.sync_turn_rail() || changed {
-                        cx.notify();
-                    }
-                });
-            });
-        });
         this._subscriptions
             .push(cx.observe_window_bounds(window, |this, window, cx| {
                 if this.record_window(window) {
@@ -717,11 +698,15 @@ impl Desktop {
     }
 
     fn at_latest(&self) -> bool {
-        self.list.max_offset_for_scrollbar().y + self.list.scroll_px_offset_for_scrollbar().y
-            <= px(12.)
+        timeline::at_bottom(&self.list)
     }
 
     fn sync_list(&mut self) {
+        self.sync_list_at(None, None);
+    }
+
+    fn sync_list_at(&mut self, prepended_rows: Option<usize>, position: Option<ReadingPosition>) {
+        let mut preserved = false;
         let session = self
             .selected
             .as_ref()
@@ -731,21 +716,23 @@ impl Desktop {
             let (items, turns, message_items) = session.map_or_else(Default::default, |session| {
                 timeline::project(session, self.hide_reasoning)
             });
-            let kept = self
-                .timeline
-                .iter()
-                .zip(&items)
-                .take_while(|(old, new)| old == new)
-                .count();
             let new_count = items.len();
-            if kept != self.visible_count || new_count != self.visible_count {
-                self.list.splice(kept..self.visible_count, new_count - kept);
+            if let Some(shift) = prepended_rows {
+                preserved = timeline::splice_older_page(&self.list, &self.timeline, &items, shift);
+            } else {
+                let kept = self.timeline.iter().zip(&items).take_while(|(old, new)| old == new).count();
+                if kept != self.visible_count || new_count != self.visible_count {
+                    self.list.splice(kept..self.visible_count, new_count - kept);
+                }
             }
             self.timeline = items;
             self.turns = turns;
             self.message_items = message_items;
             self.visible_count = new_count;
             self.timeline_raw_count = Some(raw_count);
+        }
+        if !preserved && self.pending_reading.is_none() {
+            self.pending_reading = position;
         }
         self.apply_reading_restore();
         if self.following && self.visible_count > 0 {

@@ -299,6 +299,7 @@ impl Desktop {
                 .map(|&i| make_anchor(session, i))
                 .collect::<Vec<_>>()
         });
+        let old_row_count = session.count();
         let mut history = std::mem::take(&mut session.history_window);
         let merged = history.merge(page, older);
         if merged.is_ok() {
@@ -308,6 +309,7 @@ impl Desktop {
         }
         session.history_window = history;
         merged?;
+        let inserted_rows = older.then(|| session.count().checked_sub(old_row_count)).flatten();
         if let (Some(expanded), Some(groups)) = (expanded, groups) {
             self.expanded = expanded
                 .iter()
@@ -320,14 +322,13 @@ impl Desktop {
         }
         self.confirm_history_receipts(key, window, cx);
         if selected {
-            if self.pending_reading.is_none() {
-                self.pending_reading = position;
-            }
             self.timeline_raw_count = None;
-            self.timeline.clear();
+            if inserted_rows.is_none() {
+                self.list.remeasure_items(0..self.visible_count);
+            }
             self.view_revision = self.view_revision.wrapping_add(1);
             self.turn_rail.jumped = None;
-            self.sync_list();
+            self.sync_list_at(inserted_rows, position);
             self.transcript_changed(cx);
             if self.files.open && self.files.collection.open {
                 self.show_session_files(cx);
