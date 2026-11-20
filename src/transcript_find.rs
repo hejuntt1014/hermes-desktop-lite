@@ -311,24 +311,35 @@ impl Desktop {
                                     .child(count)
                             }))
                             .child(
-                                icon_button("find-previous", "", tr("上一个匹配"))
-                                    .when(!has_matches, |button| button.opacity(0.45))
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                icon_button(
+                                    "find-previous",
+                                    crate::icons::ARROW_UP,
+                                    tr("上一个匹配"),
+                                )
+                                .when(!has_matches, |button| button.opacity(0.45))
+                                .on_click(
+                                    cx.listener(|this, _, _, cx| {
                                         this.step_transcript_find(true, cx)
-                                    })),
+                                    }),
+                                ),
                             )
                             .child(
-                                icon_button("find-next", "", tr("下一个匹配"))
-                                    .when(!has_matches, |button| button.opacity(0.45))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.step_transcript_find(false, cx)
-                                    })),
+                                icon_button(
+                                    "find-next",
+                                    crate::icons::ARROW_DOWN,
+                                    tr("下一个匹配"),
+                                )
+                                .when(!has_matches, |button| button.opacity(0.45))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| this.step_transcript_find(false, cx),
+                                )),
                             )
-                            .child(icon_button("find-close", "", tr("关闭查找")).on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.close_transcript_find(window, cx)
-                                }),
-                            )),
+                            .child(
+                                icon_button("find-close", crate::icons::TAB_CLOSE, tr("关闭查找"))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.close_transcript_find(window, cx)
+                                    })),
+                            ),
                     )
                     .children(preview.map(|preview| {
                         div()

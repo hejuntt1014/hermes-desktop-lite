@@ -32,15 +32,15 @@ enum Command {
 }
 
 impl Command {
-    fn glyph(self) -> &'static str {
+    fn icon(self) -> &'static str {
         match self {
-            Self::New => "",
-            Self::Settings => "",
-            Self::Files => "",
-            Self::Review => "",
-            Self::Find => "",
-            Self::Sidebar => "",
-            Self::Reopen => "",
+            Self::New => crate::icons::ADD,
+            Self::Settings => crate::icons::SETTINGS,
+            Self::Files => crate::icons::FOLDER_OPEN,
+            Self::Review => crate::icons::BRANCH,
+            Self::Find => crate::icons::SEARCH,
+            Self::Sidebar => crate::icons::SIDEBAR_LEFT,
+            Self::Reopen => crate::icons::REFRESH,
         }
     }
 
@@ -536,11 +536,11 @@ impl Desktop {
                 let ListRow::Entry(entry) = row else { return None };
                 let active = desktop.palette.active == Some(index);
                 let title = entry.title();
-                let (glyph, suffix, secondary) = match entry {
-                    Entry::Bookmark(mark) => ("☆", tr("收藏"), mark.title.clone().into()),
-                    Entry::Command(command, _) => (command.glyph(), command.shortcut(), "".into()),
-                    Entry::Tab(tab) => ("", if tab.session.is_none() { tr("草稿") } else { "" }, "".into()),
-                    Entry::Session(summary, snippet) => ("", if summary.archived { tr("已归档") } else { "" }, snippet.clone())
+                let (icon, suffix, secondary) = match entry {
+                    Entry::Bookmark(mark) => (crate::icons::MODEL_STAR, tr("收藏"), mark.title.clone().into()),
+                    Entry::Command(command, _) => (command.icon(), command.shortcut(), "".into()),
+                    Entry::Tab(tab) => (crate::icons::DESKTOP, if tab.session.is_none() { tr("草稿") } else { "" }, "".into()),
+                    Entry::Session(summary, snippet) => (crate::icons::DISCUSSION, if summary.archived { tr("已归档") } else { "" }, snippet.clone())
                 };
                 let current = matches!(entry, Entry::Tab(tab) if desktop.workspace().and_then(|workspace| workspace.active_tab.as_deref()) == Some(&tab.id));
                 let weak = entity.downgrade();
@@ -550,8 +550,7 @@ impl Desktop {
                     .bg(rgb(if active { 0xe7eefc } else { 0xfbfcfe }))
                     .hover(|style| style.bg(rgb(0xe9effa)))
                     .text_size(px(12.)).text_color(rgb(0x273447))
-                    .child(div().font_family("Segoe Fluent Icons").text_size(px(11.)).w(px(16.)).flex_none()
-                        .text_color(rgb(if current { 0x185aff } else { 0x627087 })).child(glyph))
+                    .child(super::view::svg_symbol(icon, 13., if current { 0x185aff } else { 0x627087 }))
                     .child(div().min_w_0().flex_1().truncate().child(title))
                     .when(!secondary.is_empty(), |item| item.child(div().min_w_0().max_w(px(210.))
                         .truncate().text_size(px(11.)).text_color(rgb(0x677487)).child(secondary)))
@@ -604,13 +603,7 @@ impl Desktop {
                                 .px_3()
                                 .border_b_1()
                                 .border_color(rgb(0x185aff))
-                                .child(
-                                    div()
-                                        .font_family("Segoe Fluent Icons")
-                                        .text_color(rgb(0x657286))
-                                        .text_size(px(13.))
-                                        .child(""),
-                                )
+                                .child(super::view::svg_symbol(crate::icons::SEARCH, 13., 0x657286))
                                 .child(
                                     div().min_w_0().flex_1().child(
                                         Input::new(&self.palette.input)

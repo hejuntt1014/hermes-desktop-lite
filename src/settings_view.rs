@@ -15,7 +15,11 @@ use crate::{
     settings::{DisplayPreferences, ReasoningVisibility},
 };
 
-use super::{Desktop, view::icon_button};
+use super::{
+    Desktop,
+    view::{icon_button, svg_symbol},
+};
+use crate::icons;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsPage {
@@ -37,13 +41,13 @@ impl SettingsPage {
         }
     }
 
-    fn glyph(self) -> &'static str {
+    fn icon(self) -> &'static str {
         match self {
-            Self::General => "",
-            Self::Chat => "",
-            Self::Layout => "",
-            Self::Connection => "",
-            Self::Shortcuts => "",
+            Self::General => icons::SETTINGS,
+            Self::Chat => icons::DISCUSSION,
+            Self::Layout => icons::SIDEBAR_LEFT,
+            Self::Connection => icons::WORLD,
+            Self::Shortcuts => icons::TERMINAL,
         }
     }
 }
@@ -249,12 +253,11 @@ impl Desktop {
                         .text_color(rgb(if selected { 0x264371 } else { 0x4d596d }))
                         .when(selected, |row| row.bg(rgb(0xe2e9f8)))
                         .hover(|row| row.bg(rgb(0xe7edf8)))
-                        .child(
-                            div()
-                                .w(px(16.))
-                                .font_family("Segoe Fluent Icons")
-                                .child(candidate.glyph()),
-                        )
+                        .child(svg_symbol(
+                            candidate.icon(),
+                            14.,
+                            if selected { 0x285684 } else { 0x6c7a8d },
+                        ))
                         .child(candidate.title())
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_settings(candidate, window, cx)
@@ -282,12 +285,12 @@ impl Desktop {
             .child("›")
             .child(div().flex_1().text_color(rgb(0x243247)).child(page.title()))
             .child(
-                icon_button("settings-close", "", tr("关闭设置")).on_click(cx.listener(
-                    |this, _, window, cx| {
+                icon_button("settings-close", icons::TAB_CLOSE, tr("关闭设置")).on_click(
+                    cx.listener(|this, _, window, cx| {
                         cx.stop_propagation();
                         this.close_settings(window, cx);
-                    },
-                )),
+                    }),
+                ),
             );
         Some(
             div()

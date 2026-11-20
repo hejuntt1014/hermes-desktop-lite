@@ -366,6 +366,10 @@ fn main() -> Result<()> {
                         .map(|settings| &settings.display)
                         .unwrap_or(&settings::DisplayPreferences::default())
                         .window_background(),
+                    #[cfg(target_os = "linux")]
+                    window_decorations: Some(gpui::WindowDecorations::Client),
+                    #[cfg(target_os = "linux")]
+                    app_id: Some("io.github.hejuntt1014.hermes-desktop-lite".into()),
                     titlebar: Some(TitlebarOptions {
                         appears_transparent: cfg!(target_os = "windows"),
                         title: Some("Hermes Desktop Lite".into()),

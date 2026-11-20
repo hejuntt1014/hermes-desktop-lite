@@ -329,8 +329,8 @@ impl Desktop {
                     .child(base.chars().take(20).collect::<String>())
             }))
             .child(
-                icon_button("refresh-git-review", "", tr("刷新变更")).on_click(cx.listener(
-                    |this, _, _, cx| {
+                icon_button("refresh-git-review", crate::icons::REFRESH, tr("刷新变更")).on_click(
+                    cx.listener(|this, _, _, cx| {
                         if this.review.target.is_none() {
                             if let Some(session) = this.selected.clone() {
                                 this.attach(&session, true);
@@ -339,8 +339,8 @@ impl Desktop {
                         } else {
                             this.load_review(cx);
                         }
-                    },
-                )),
+                    }),
+                ),
             );
         let modes = div().flex_none().w_full().h(px(34.)).px_2().py_1().child(
             div()

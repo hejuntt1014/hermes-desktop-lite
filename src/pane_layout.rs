@@ -228,7 +228,7 @@ impl Desktop {
 }
 
 pub(super) fn toggle_maximized(window: &Window) {
-    if !window.is_maximized() {
+    if !cfg!(windows) || !window.is_maximized() {
         window.zoom_window();
         return;
     }
@@ -289,4 +289,49 @@ pub(super) fn start_window_drag(window: &Window) {
     }
     #[cfg(not(windows))]
     window.start_window_move();
+}
+
+// X11 can honor Motif decoration hints even when it has no compositing manager.
+// The app draws its own controls and resize edges without a translucent frame.
+#[cfg(target_os = "linux")]
+pub(super) fn enable_x11_client_chrome(window: &Window) -> bool {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use x11rb::{
+        connection::Connection,
+        protocol::xproto::{ConnectionExt, PropMode},
+        wrapper::ConnectionExt as _,
+    };
+
+    if matches!(
+        window.window_decorations(),
+        gpui::Decorations::Client { .. }
+    ) {
+        return false;
+    }
+    let Ok(handle) = HasWindowHandle::window_handle(window) else {
+        return false;
+    };
+    let RawWindowHandle::Xcb(handle) = handle.as_raw() else {
+        return false;
+    };
+    let change = || -> anyhow::Result<()> {
+        let (connection, _) = x11rb::connect(None)?;
+        let atom = connection
+            .intern_atom(false, b"_MOTIF_WM_HINTS")?
+            .reply()?
+            .atom;
+        // MWM_HINTS_DECORATIONS, with a zero decorations mask.
+        connection
+            .change_property32(
+                PropMode::REPLACE,
+                handle.window.get(),
+                atom,
+                atom,
+                &[2, 0, 0, 0, 0],
+            )?
+            .check()?;
+        connection.flush()?;
+        Ok(())
+    };
+    change().is_ok()
 }

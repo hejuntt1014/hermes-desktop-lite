@@ -221,6 +221,8 @@ pub struct Desktop {
     gateway_panel: GatewayPanel,
     sidebar_open: bool,
     pane_resize: Option<PaneResize>,
+    #[cfg(target_os = "linux")]
+    x11_client_chrome: bool,
     maximized_drag: Option<Point<Pixels>>,
     session_dialog: Option<session_dialog::SessionDialog>,
     list: ListState,
@@ -396,6 +398,8 @@ impl Desktop {
             palette: Palette::new(palette_input),
             sidebar_open,
             pane_resize: None,
+            #[cfg(target_os = "linux")]
+            x11_client_chrome: pane_layout::enable_x11_client_chrome(window),
             maximized_drag: None,
             clarify: Clarify::new(cx.focus_handle()),
             rewrite_editor: None,

@@ -124,14 +124,8 @@ pub(super) fn panel() -> Div {
         .rounded(px(8.))
 }
 
-pub(super) fn symbol(glyph: &'static str, size: f32) -> Div {
-    if glyph.ends_with(".svg") {
-        return svg_symbol(glyph, size, MUTED);
-    }
-    div()
-        .font_family("Segoe Fluent Icons")
-        .text_size(px(size))
-        .child(glyph)
+pub(super) fn symbol(asset: &'static str, size: f32) -> Div {
+    svg_symbol(asset, size, MUTED)
 }
 
 pub(super) fn svg_symbol(asset: &'static str, size: f32, color: u32) -> Div {
@@ -578,6 +572,10 @@ impl Render for Desktop {
             .children(question_overlay)
             .children(self.rewrite_overlay(window, cx))
             .children(self.queue_editor_panel(window, cx))
+            .children(linux_resize_edges(
+                self.has_linux_client_chrome(window),
+                window,
+            ))
     }
 }
 
@@ -707,6 +705,7 @@ impl Desktop {
         use gpui::WindowControlArea;
         const CAPTION_BUTTON_WIDTH: f32 = 46.;
         let leading = 41.;
+        let client_chrome = cfg!(windows) || self.has_linux_client_chrome(window);
         let chrome = |id: &'static str, icon: Div| {
             div()
                 .id(id)
@@ -821,7 +820,7 @@ impl Desktop {
             .when(!connecting, |bar| {
                 let chrome_width = 37. * 5.
                     + 28.
-                    + if cfg!(target_os = "windows") {
+                    + if client_chrome {
                         CAPTION_BUTTON_WIDTH * 3.
                     } else {
                         0.
@@ -866,9 +865,14 @@ impl Desktop {
                         this.toggle_settings(window, cx);
                     })),
             );
-        if cfg!(target_os = "windows") {
-            for (id, asset, area) in [
-                ("min", icons::CHROME_MINIMIZE, WindowControlArea::Min),
+        if client_chrome {
+            for (id, asset, area, label) in [
+                (
+                    "min",
+                    icons::CHROME_MINIMIZE,
+                    WindowControlArea::Min,
+                    tr("最小化窗口"),
+                ),
                 (
                     "max",
                     if window.is_maximized() {
@@ -877,12 +881,23 @@ impl Desktop {
                         icons::CHROME_MAXIMIZE
                     },
                     WindowControlArea::Max,
+                    if window.is_maximized() {
+                        tr("还原窗口")
+                    } else {
+                        tr("最大化窗口")
+                    },
                 ),
-                ("close", icons::CHROME_CLOSE, WindowControlArea::Close),
+                (
+                    "close",
+                    icons::CHROME_CLOSE,
+                    WindowControlArea::Close,
+                    tr("关闭窗口"),
+                ),
             ] {
                 let close = matches!(area, WindowControlArea::Close);
                 let button = div()
                     .id(id)
+                    .aria_label(label)
                     .group(id)
                     .h_full()
                     .w(px(CAPTION_BUTTON_WIDTH))
@@ -920,6 +935,22 @@ impl Desktop {
             }
         }
         strip
+    }
+
+    fn has_linux_client_chrome(&self, window: &Window) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.x11_client_chrome
+                || matches!(
+                    window.window_decorations(),
+                    gpui::Decorations::Client { .. }
+                )
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = window;
+            false
+        }
     }
 
     fn status_bar(&self, cx: &mut Context<Self>) -> Div {
@@ -1904,7 +1935,7 @@ impl Desktop {
                                         .bg(rgba(0xffffffea))
                                 })
                                 .hover(|style| style.bg(rgb(0xdee7f5)))
-                                .child(symbol("", 8.))
+                                .child(svg_symbol(icons::TAB_CLOSE, 8., MUTED))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
                                     this.remove_file(&path, cx);
@@ -2246,6 +2277,69 @@ fn new_chat_intro(width: gpui::Pixels, window: &Window) -> Div {
         )
 }
 
+fn linux_resize_edges(enabled: bool, window: &Window) -> impl Iterator<Item = gpui::Stateful<Div>> {
+    use gpui::{CursorStyle, MouseButton, ResizeEdge};
+    let enabled = enabled && !window.is_maximized() && !window.is_fullscreen();
+    let edge = px(4.);
+    let corner = px(8.);
+    [
+        (
+            ResizeEdge::Top,
+            CursorStyle::ResizeUpDown,
+            div().top_0().left(corner).right(corner).h(edge),
+        ),
+        (
+            ResizeEdge::Bottom,
+            CursorStyle::ResizeUpDown,
+            div().bottom_0().left(corner).right(corner).h(edge),
+        ),
+        (
+            ResizeEdge::Left,
+            CursorStyle::ResizeLeftRight,
+            div().left_0().top(corner).bottom(corner).w(edge),
+        ),
+        (
+            ResizeEdge::Right,
+            CursorStyle::ResizeLeftRight,
+            div().right_0().top(corner).bottom(corner).w(edge),
+        ),
+        (
+            ResizeEdge::TopLeft,
+            CursorStyle::ResizeUpLeftDownRight,
+            div().top_0().left_0().size(corner),
+        ),
+        (
+            ResizeEdge::TopRight,
+            CursorStyle::ResizeUpRightDownLeft,
+            div().top_0().right_0().size(corner),
+        ),
+        (
+            ResizeEdge::BottomLeft,
+            CursorStyle::ResizeUpRightDownLeft,
+            div().bottom_0().left_0().size(corner),
+        ),
+        (
+            ResizeEdge::BottomRight,
+            CursorStyle::ResizeUpLeftDownRight,
+            div().bottom_0().right_0().size(corner),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    .filter_map(move |(index, (edge, cursor, element))| {
+        enabled.then(|| {
+            element
+                .id(("window-resize", index))
+                .absolute()
+                .cursor(cursor)
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    cx.stop_propagation();
+                    window.start_window_resize(edge);
+                })
+        })
+    })
+}
+
 fn file_chip(name: SharedString) -> Div {
     div()
         .h(px(23.))
@@ -2260,7 +2354,7 @@ fn file_chip(name: SharedString) -> Div {
         .bg(rgb(0xf2f6fc))
         .text_size(px(11.))
         .text_color(rgb(0x4e647e))
-        .child(symbol("", 10.))
+        .child(svg_symbol(icons::LINK, 10., MUTED))
         .child(div().min_w_0().truncate().child(name))
 }
 
