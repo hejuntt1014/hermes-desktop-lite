@@ -18,7 +18,7 @@
   <img src="docs/screenshots/desktop-chat.png" alt="Desktop chat" width="100%">
 </p>
 
-Hermes Lite connects to your own Hermes gateway so you can browse conversations, stream replies, share attachments and talk by voice from your computer and your phone. The desktop app renders natively with Rust and GPUI, so it starts fast and stays light. The mobile app is built with Flutter and uses floating frosted-glass controls that leave the screen to your content.
+Hermes Lite is a third-party client for Hermes Agent, with a desktop app (Rust + GPUI) and a mobile app (Flutter). Connect it to your own Hermes gateway to browse conversations, send messages, share attachments and talk by voice.
 
 ## Download
 
@@ -30,7 +30,7 @@ Hermes Lite connects to your own Hermes gateway so you can browse conversations,
 
 If Windows reports that `VCRUNTIME140.dll` is missing at startup, install the [Microsoft Visual C++ v14 x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe).
 
-## Why it is faster
+## Performance
 
 On Windows x64, Lite v0.1.0 took **84% less time** than the official Hermes Desktop client to display a reply when restoring the same conversation from a cold start. Its process tree used **86% less private memory**.
 
@@ -69,11 +69,10 @@ Both clients used the same profile and restored the same conversation containing
   </tr>
 </table>
 
-- **Content first**: the top bar and composer float over the conversation as frosted glass, and the composer folds to a single line when idle
-- **Tabs**: switch between conversations like browser tabs, or swipe the title to move to the next one
-- **Voice**: GPT-Live real-time voice by default; a call shrinks to a draggable bubble that keeps the chat in view, and a tap on the microphone dictates
-- **Desktop parity**: attachments and images, model and reasoning level, scheduled tasks, workspace files, clarifications and approvals, automatic reconnection
-- **Two languages**: Simplified Chinese and English
+- **Conversations**: tabs, conversation list, search and profile switching
+- **Chat**: streamed replies, attachments and images, model and reasoning level, clarifications and approvals
+- **Voice**: dictation and voice conversation, with GPT-Live by default
+- **Also**: scheduled tasks, workspace files, automatic reconnection, and Simplified Chinese and English
 
 ## Building
 
