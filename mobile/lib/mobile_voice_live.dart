@@ -164,6 +164,19 @@ class _LiveDelegations {
         final (:peer, :work) = _queued!;
         _queued = null;
         owner._setPhase(VoicePhase.waiting);
+        // Without this the live voice falls silent while Hermes works, which
+        // sounds like a dropped call on longer requests.
+        if (peer.ready && peer._active) {
+          unawaited(
+            peer._send({
+              'type': 'session.thinking.append',
+              'delegation_id': work.id,
+              'content':
+                  'Hermes is working on this request now. Briefly let the '
+                  'user know, then wait for the result.',
+            }),
+          );
+        }
         String? reply;
         try {
           reply = await submit(work.prompt, false, work.context);
@@ -217,7 +230,8 @@ class _LivePeer {
   rtc.RTCPeerConnection? _peer;
   rtc.RTCDataChannel? _channel;
   rtc.MediaStream? _local;
-  Timer? _starting, _reconnecting;
+  Timer? _starting, _reconnecting, _meter;
+  bool _sampling = false;
   bool _closed = false, _muted = false, ready = false;
 
   bool get _active =>
@@ -252,7 +266,9 @@ class _LivePeer {
     final tracks = local.getAudioTracks();
     if (tracks.isEmpty) throw GatewayError('无法打开麦克风');
     for (final track in tracks) {
-      track.enabled = false;
+      // Live from the start, as on desktop: gating the track on
+      // session.started left calls deaf whenever that event came late.
+      track.enabled = !call.muted;
       await peer.addTrack(track, local);
       if (!_active) return _throwEnd();
     }
@@ -304,6 +320,10 @@ class _LivePeer {
     _starting = Timer(const Duration(seconds: 20), () {
       _finish(const _LiveTransportLost('语音连接超时'));
     });
+    _meter = Timer.periodic(
+      const Duration(milliseconds: 120),
+      (_) => unawaited(_sampleMicrophone()),
+    );
     try {
       await peer.setRemoteDescription(
         rtc.RTCSessionDescription(answer, 'answer'),
@@ -314,6 +334,30 @@ class _LivePeer {
       throw _LiveStartUnavailable('语音连接失败');
     }
     await _throwEnd();
+  }
+
+  /// Feeds the microphone level from WebRTC stats into the call view, so a
+  /// silent orb shows at a glance that no audio is being captured.
+  Future<void> _sampleMicrophone() async {
+    final peer = _peer;
+    if (!_active || peer == null || _sampling) return;
+    _sampling = true;
+    try {
+      for (final report in await peer.getStats()) {
+        if (report.type != 'media-source') continue;
+        if (report.values['kind'] != 'audio') continue;
+        final level = report.values['audioLevel'];
+        if (level is num && _active) {
+          owner.level.value = call.muted || level <= 0
+              ? 0
+              : _decibelLevel(20 * math.log(level) / math.ln10);
+        }
+      }
+    } catch (_) {
+      // Stats are best effort; the call itself does not depend on them.
+    } finally {
+      _sampling = false;
+    }
   }
 
   Future<void> _throwEnd() async {
@@ -354,6 +398,9 @@ class _LivePeer {
     } on FormatException {
       return;
     }
+    if (event?['type'] case final String type when !type.endsWith('.delta')) {
+      debugPrint('[voice-live] $type');
+    }
     switch (event?['type']) {
       case 'session.started':
         if (ready) return;
@@ -364,10 +411,9 @@ class _LivePeer {
       case 'session.input_transcript.delta':
       case 'session.output_transcript.delta':
         if (event?['delta'] case final String text) {
-          transcript.append(
-            event!['type'] == 'session.input_transcript.delta',
-            text,
-          );
+          final user = event!['type'] == 'session.input_transcript.delta';
+          transcript.append(user, text);
+          owner._transcribed(user: user, text: transcript.latest);
         }
       case 'session.delegation.created':
         final delegation = event?['delegation'];
@@ -405,7 +451,7 @@ class _LivePeer {
     if (!_active) return;
     for (final track
         in _local?.getAudioTracks() ?? const <rtc.MediaStreamTrack>[]) {
-      track.enabled = ready && !call.muted;
+      track.enabled = !call.muted;
     }
     if (ready && _muted != call.muted) {
       _muted = call.muted;
@@ -455,6 +501,8 @@ class _LivePeer {
 
   Future<void> close() async {
     _closed = true;
+    _meter?.cancel();
+    owner.level.value = 0;
     _starting?.cancel();
     _reconnecting?.cancel();
     final peer = _peer;
@@ -498,6 +546,8 @@ class _LiveTranscript {
     ));
     if (_turns.length > 12) _turns.removeAt(0);
   }
+
+  String get latest => _turns.lastOrNull?.text.trim() ?? '';
 
   String? get lastPrompt => _turns.reversed
       .where((turn) => turn.user && turn.text.trim().isNotEmpty)

@@ -9,6 +9,7 @@ import 'chat_tabs.dart';
 import 'gateway.dart';
 import 'mobile_locale.dart';
 import 'session_activity.dart';
+import 'ui_kit.dart';
 
 enum SessionMenuAction {
   open,
@@ -42,11 +43,9 @@ Future<Json?> chooseUnreadConversation(
   required Listenable activity,
   required Set<String> Function() busySessions,
   required Future<bool> Function(String id) markRead,
-}) => showModalBottomSheet<Json>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
+}) => showGlassSheet<Json>(
+  context,
+  heightFactor: .6,
   builder: (_) => _UnreadConversations(
     rows: rows,
     activity: activity,
@@ -88,23 +87,12 @@ class _UnreadConversationsState extends State<_UnreadConversations> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: FractionallySizedBox(
-      heightFactor: .64,
-      child: Column(
+  Widget build(BuildContext context) => GlassSheetFrame(
+    title: context.tr('未读会话'),
+    expand: true,
+    child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Semantics(
-              header: true,
-              child: Text(
-                context.tr('未读会话'),
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-          ),
           if (failed)
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -134,9 +122,10 @@ class _UnreadConversationsState extends State<_UnreadConversations> {
                     final row = entries[index];
                     final id = tabSessionId(row)!;
                     final pending = marking.contains(id);
-                    return ConversationTile(
+                    return GlassListRow(
                       key: ValueKey(id),
-                      row: row,
+                      icon: Icons.mark_chat_unread_outlined,
+                      title: sessionTitle(row) ?? context.tr('未命名会话'),
                       onTap: () {
                         if (!pending) Navigator.pop(context, row);
                       },
@@ -163,7 +152,6 @@ class _UnreadConversationsState extends State<_UnreadConversations> {
           ),
         ],
       ),
-    ),
   );
 }
 
@@ -176,79 +164,64 @@ Future<Json?> chooseActiveConversation(
   Future<List<ActiveConversation>> read() =>
       _readActiveConversations(gateway, profile, knownRows);
   var pending = read();
-  return showModalBottomSheet<Json>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+  return showGlassSheet<Json>(
+    context,
+    heightFactor: .6,
     builder: (sheet) => StatefulBuilder(
-      builder: (context, update) => SafeArea(
-        top: false,
-        child: FractionallySizedBox(
-          heightFactor: .56,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsetsDirectional.fromSTEB(20, 0, 20, 8),
-                child: Semantics(
-                  header: true,
-                  child: Text(
-                    context.tr('进行中的会话'),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+      builder: (context, update) => GlassSheetFrame(
+        title: context.tr('进行中的会话'),
+        expand: true,
+        child: FutureBuilder(
+          future: pending,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return glassSheetMessage(
+                context,
+                context.tr('暂时无法读取此信息'),
+                action: TextButton.icon(
+                  onPressed: () => update(() {
+                    pending = read();
+                  }),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(context.tr('重新读取')),
                 ),
-              ),
-              Expanded(
-                child: FutureBuilder(
-                  future: pending,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: TextButton.icon(
-                          onPressed: () => update(() {
-                            pending = read();
-                          }),
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: Text(context.tr('重新读取')),
-                        ),
-                      );
-                    }
-                    final entries =
-                        snapshot.data ?? const <ActiveConversation>[];
-                    if (entries.isEmpty)
-                      return Center(child: Text(context.tr('暂无进行中的会话')));
-                    return ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final (:row, :activity) = entries[index];
-                        final icon = switch (activity) {
-                          ConversationActivity.waiting =>
-                            Icons.chat_bubble_outline_rounded,
-                          ConversationActivity.running =>
-                            Icons.timelapse_rounded,
-                          ConversationActivity.background =>
-                            Icons.bolt_outlined,
-                        };
-                        return ListTile(
-                          leading: Icon(icon, size: 20),
-                          title: Text(
-                            sessionTitle(row) ?? context.tr('未命名会话'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Text(context.tr(activity.label)),
-                          onTap: () => Navigator.pop(sheet, row),
-                        );
+              );
+            }
+            final entries = snapshot.data ?? const <ActiveConversation>[];
+            if (entries.isEmpty) {
+              return glassSheetMessage(context, context.tr('暂无进行中的会话'));
+            }
+            final colors = Theme.of(context).colorScheme;
+            return SingleChildScrollView(
+              child: GlassGroup(
+                children: [
+                  for (final (:row, :activity) in entries)
+                    GlassListRow(
+                      icon: switch (activity) {
+                        ConversationActivity.waiting =>
+                          Icons.chat_bubble_outline_rounded,
+                        ConversationActivity.running => Icons.timelapse_rounded,
+                        ConversationActivity.background => Icons.bolt_rounded,
                       },
-                    );
-                  },
-                ),
+                      iconColor: activity == ConversationActivity.waiting
+                          ? colors.tertiary
+                          : colors.primary,
+                      title: sessionTitle(row) ?? context.tr('未命名会话'),
+                      subtitle: context.tr(activity.label),
+                      trailing: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      onTap: () => Navigator.pop(sheet, row),
+                    ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     ),

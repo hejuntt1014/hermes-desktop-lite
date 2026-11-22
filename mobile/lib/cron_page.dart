@@ -5,8 +5,8 @@ import 'package:material_ui/material_ui.dart';
 
 import 'mobile_locale.dart';
 import 'gateway.dart';
+import 'ui_kit.dart';
 
-part 'cron_sidebar.dart';
 
 const cronJobsPath = 'api/cron/jobs';
 
@@ -238,6 +238,123 @@ String _cronError(Object error, {String fallback = '暂时无法读取此信息'
       _ => fallback,
     };
 
+enum CronSheetIntent { open, create, manage }
+
+typedef CronSheetChoice = ({CronSheetIntent intent, String? jobId});
+
+/// The sidebar's quick look at this profile's jobs, in the same glass sheet
+/// as the active and unread lists. Editing and run history stay on
+/// [CronPage]; the choice says where to land there.
+Future<CronSheetChoice?> chooseCronJob(
+  BuildContext context, {
+  required Gateway gateway,
+  required String profile,
+}) {
+  var pending = _readJobs(gateway, profile);
+  return showGlassSheet<CronSheetChoice>(
+    context,
+    heightFactor: .6,
+    builder: (sheet) => StatefulBuilder(
+      builder: (context, update) {
+        final colors = Theme.of(context).colorScheme;
+        void choose(CronSheetIntent intent, [String? jobId]) =>
+            Navigator.pop(sheet, (intent: intent, jobId: jobId));
+        return GlassSheetFrame(
+          title: context.tr('定时任务'),
+          subtitle: profile,
+          expand: true,
+          actions: [
+            IconButton(
+              tooltip: context.tr('新建定时任务'),
+              onPressed: () => choose(CronSheetIntent.create),
+              icon: const Icon(Icons.add_rounded),
+            ),
+            IconButton(
+              tooltip: context.tr('管理定时任务'),
+              onPressed: () => choose(CronSheetIntent.manage),
+              icon: const Icon(Icons.open_in_full_rounded, size: 20),
+            ),
+          ],
+          child: FutureBuilder(
+            future: pending,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return glassSheetMessage(
+                  context,
+                  context.tr('定时任务读取失败'),
+                  action: TextButton.icon(
+                    onPressed: () => update(() {
+                      pending = _readJobs(gateway, profile);
+                    }),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(context.tr('重新读取')),
+                  ),
+                );
+              }
+              final jobs = snapshot.data ?? const <Json>[];
+              if (jobs.isEmpty) {
+                return glassSheetMessage(
+                  context,
+                  context.tr('暂无定时任务'),
+                  action: TextButton.icon(
+                    onPressed: () => choose(CronSheetIntent.create),
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(context.tr('新建定时任务')),
+                  ),
+                );
+              }
+              final now = DateTime.now();
+              final triggers = _cronTriggers(gateway).value;
+              return SingleChildScrollView(
+                child: GlassGroup(
+                  children: [
+                    for (final job in jobs)
+                      GlassListRow(
+                        icon: Icons.schedule_rounded,
+                        iconColor: switch (_stateText(job)) {
+                          '执行中' => colors.primary,
+                          '执行异常' => colors.error,
+                          '已暂停' || '已停用' || '已完成' =>
+                            colors.onSurfaceVariant.withValues(alpha: .45),
+                          _ => null,
+                        },
+                        title: _jobTitle(job, context.tr('定时任务')),
+                        subtitle: [
+                          _jobStatus(
+                            context,
+                            job,
+                            now,
+                            triggering: triggers.contains((
+                              profile,
+                              job['id'] as String,
+                            )),
+                          ),
+                          _scheduleText(job),
+                        ].where((s) => s.isNotEmpty).join(' · '),
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        onTap: () => choose(
+                          CronSheetIntent.open,
+                          job['id'] as String,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    ),
+  );
+}
+
 class CronPage extends StatefulWidget {
   const CronPage({
     super.key,
@@ -245,10 +362,14 @@ class CronPage extends StatefulWidget {
     required this.profile,
     required this.openConversation,
     this.initialJobId,
+    this.startCreating = false,
   });
   final Gateway gateway;
   final String profile;
   final ValueChanged<Json> openConversation;
+
+  /// Opens the editor for a new job as soon as the page appears.
+  final bool startCreating;
   final String? initialJobId;
 
   @override
@@ -280,6 +401,11 @@ class _CronPageState extends State<CronPage> {
       }
     });
     load();
+    if (widget.startCreating) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(create());
+      });
+    }
   }
 
   @override

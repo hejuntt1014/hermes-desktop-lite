@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data' show BytesBuilder;
 
 import 'package:audioplayers/audioplayers.dart';
@@ -40,7 +41,17 @@ class MobileVoice extends ChangeNotifier {
   bool _disposed = false;
   _VoiceCall? _call;
 
+  /// Microphone level, 0 to 1, while dictating or listening in a call.
+  final level = ValueNotifier<double>(0);
+
+  /// What the call last heard from the user and what it is saying back.
+  String heard = '', said = '';
+
+  /// When the current dictation started recording, for its timer.
+  DateTime? recordingSince;
+
   bool get inCall => _call != null;
+  bool get liveCall => _call?.live == true;
   bool get readingReply =>
       _job != null &&
       !inCall &&
@@ -101,6 +112,7 @@ class MobileVoice extends ChangeNotifier {
     final recorder = AudioRecorder();
     Directory? scratch;
     StreamSubscription<RecordStop>? stops;
+    StreamSubscription<Amplitude>? amplitude;
     try {
       final permitted = await recorder.hasPermission();
       if (job.cancelled.isCompleted) return null;
@@ -125,6 +137,10 @@ class MobileVoice extends ChangeNotifier {
         path: '${scratch.path}${Platform.pathSeparator}speech.wav',
       );
       if (job.cancelled.isCompleted) return null;
+      amplitude = recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 70))
+          .listen((sample) => level.value = _decibelLevel(sample.current));
+      recordingSince = DateTime.now();
       _setPhase(VoicePhase.recording);
       final accepted = await job.untilCancelled(
         Future.any([
@@ -139,6 +155,9 @@ class MobileVoice extends ChangeNotifier {
       return path == null ? Uint8List(0) : await File(path).readAsBytes();
     } finally {
       await stops?.cancel();
+      await amplitude?.cancel();
+      recordingSince = null;
+      level.value = 0;
       try {
         await recorder.dispose();
       } finally {
@@ -277,7 +296,22 @@ class MobileVoice extends ChangeNotifier {
 
   void _end() {
     _job = null;
+    level.value = 0;
+    heard = '';
+    said = '';
     _setPhase(VoicePhase.idle);
+  }
+
+  /// Records what the call heard or is saying; a new user turn clears the
+  /// previous reply so the two lines always belong together.
+  void _transcribed({required bool user, required String text}) {
+    if (user) {
+      if (heard.isEmpty || said.isNotEmpty) said = '';
+      heard = text;
+    } else {
+      said = text;
+    }
+    if (!_disposed) notifyListeners();
   }
 
   void _setPhase(VoicePhase next) {
@@ -330,8 +364,27 @@ class MobileVoice extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     cancel();
+    level.dispose();
     super.dispose();
   }
+}
+
+/// Maps a recorder level in dBFS onto 0 to 1, treating -50 dB as silence.
+double _decibelLevel(double decibels) =>
+    decibels.isFinite ? ((decibels + 50) / 50).clamp(0.0, 1.0) : 0;
+
+/// Level of a 16-bit little-endian PCM chunk, on the same 0 to 1 scale.
+double _pcmLevel(Uint8List chunk) {
+  if (chunk.length < 2) return 0;
+  final data = ByteData.sublistView(chunk);
+  var energy = 0.0;
+  final samples = chunk.length ~/ 2;
+  for (var offset = 0; offset < samples * 2; offset += 2) {
+    final sample = data.getInt16(offset, Endian.little) / 32768;
+    energy += sample * sample;
+  }
+  final rms = math.sqrt(energy / samples);
+  return rms <= 0 ? 0 : _decibelLevel(20 * math.log(rms) / math.ln10);
 }
 
 class _VoiceJob {

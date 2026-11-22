@@ -22,6 +22,7 @@ import 'gateway.dart';
 import 'profiles.dart';
 import 'profile_manager.dart';
 import 'cron_page.dart';
+import 'library_shortcuts.dart';
 import 'session_export.dart';
 import 'session_branch.dart';
 import 'transcript_explorer.dart';
@@ -775,6 +776,7 @@ class _SessionsPageState extends State<SessionsPage> {
   final readingReceipts = <(String, String), Future<void>>{};
   String query = '';
   bool archived = false;
+  bool searching = false;
   final archiveLists = <bool, ({List<Json> rows, int nextOffset, bool more})>{};
   bool mutating = false;
   Timer? debounce;
@@ -1584,108 +1586,86 @@ class _SessionsPageState extends State<SessionsPage> {
         row['archived'] == true ? '移出归档' : '归档',
       ),
     ];
+    GlassSheetAction<SessionMenuAction> entry(
+      (SessionMenuAction, IconData, String) item,
+    ) => GlassSheetAction(
+      value: item.$1,
+      icon: item.$2,
+      label: context.tr(item.$3),
+      enabled: !item.$1.requiresGateway || widget.gateway.usable,
+      destructive: item.$1 == SessionMenuAction.delete,
+    );
     final action =
         selected ??
-        await showModalBottomSheet<SessionMenuAction>(
-          context: context,
-          showDragHandle: true,
-          isScrollControlled: true,
-          useSafeArea: true,
-          builder: (sheet) => SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(9, 0, 9, 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsetsDirectional.fromSTEB(
-                      12,
-                      0,
-                      12,
-                      14,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(sheet).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            for (final (action, icon, label) in shortcuts)
-                              ActionChip(
-                                avatar: Icon(icon, size: 18),
-                                label: Text(sheet.tr(label)),
-                                onPressed: widget.gateway.usable
-                                    ? () => Navigator.pop(sheet, action)
-                                    : null,
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  for (final item in [
-                    if (tabProfile == null)
-                      (
-                        SessionMenuAction.open,
-                        Icons.open_in_new_rounded,
-                        '在新标签页打开',
-                      ),
-                    if (pinnedIndex > 0)
-                      (
-                        SessionMenuAction.pinUp,
-                        Icons.arrow_upward_rounded,
-                        '上移置顶',
-                      ),
-                    if (pinnedIndex >= 0 && pinnedIndex + 1 < pins.length)
-                      (
-                        SessionMenuAction.pinDown,
-                        Icons.arrow_downward_rounded,
-                        '下移置顶',
-                      ),
-                    (SessionMenuAction.color, Icons.palette_outlined, '会话标题颜色'),
-                    (SessionMenuAction.copyId, Icons.copy_outlined, '复制会话 ID'),
-                    (
-                      SessionMenuAction.branch,
-                      Icons.call_split_rounded,
-                      '分叉会话',
-                    ),
-                    (SessionMenuAction.export, Icons.download_outlined, '导出会话'),
-                    (SessionMenuAction.share, Icons.ios_share_outlined, '分享会话'),
-                    (SessionMenuAction.delete, Icons.delete_outline, '删除'),
-                  ]) ...[
-                    if (item.$1 == SessionMenuAction.branch ||
-                        item.$1 == SessionMenuAction.delete)
-                      const Divider(height: 12, indent: 12, endIndent: 12),
-                    ListTile(
-                      enabled:
-                          !item.$1.requiresGateway || widget.gateway.usable,
-                      minTileHeight: 46,
-                      minLeadingWidth: 23,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      leading: Icon(
-                        item.$2,
-                        color: item.$1 == SessionMenuAction.delete
-                            ? Theme.of(sheet).colorScheme.error
-                            : null,
-                      ),
-                      title: Text(sheet.tr(item.$3)),
-                      onTap: () => Navigator.pop(sheet, item.$1),
-                    ),
-                  ],
-                ],
+        await showGlassActionSheet<SessionMenuAction>(
+          context,
+          title: name,
+          subtitle: [
+            profileLabel(owner),
+            if (sessionTime(row) case final time?)
+              MaterialLocalizations.of(context).formatMediumDate(time),
+          ].join(' · '),
+          quick: [
+            for (final (action, icon, label) in shortcuts)
+              GlassSheetAction(
+                value: action,
+                icon: icon,
+                label: context.tr(label),
+                enabled: widget.gateway.usable,
               ),
-            ),
-          ),
+          ],
+          groups: [
+            [
+              if (tabProfile == null)
+                entry((
+                  SessionMenuAction.open,
+                  Icons.open_in_new_rounded,
+                  '在新标签页打开',
+                )),
+              if (pinnedIndex > 0)
+                entry((
+                  SessionMenuAction.pinUp,
+                  Icons.arrow_upward_rounded,
+                  '上移置顶',
+                )),
+              if (pinnedIndex >= 0 && pinnedIndex + 1 < pins.length)
+                entry((
+                  SessionMenuAction.pinDown,
+                  Icons.arrow_downward_rounded,
+                  '下移置顶',
+                )),
+              entry((
+                SessionMenuAction.color,
+                Icons.palette_outlined,
+                '会话标题颜色',
+              )),
+              entry((SessionMenuAction.copyId, Icons.copy_outlined, '复制会话 ID')),
+            ],
+            [
+              entry((
+                SessionMenuAction.branch,
+                Icons.call_split_rounded,
+                '分叉会话',
+              )),
+              entry((
+                SessionMenuAction.export,
+                Icons.download_outlined,
+                '导出会话',
+              )),
+              entry((
+                SessionMenuAction.share,
+                Icons.ios_share_outlined,
+                '分享会话',
+              )),
+            ],
+            [
+              entry((
+                SessionMenuAction.delete,
+                Icons.delete_outline_rounded,
+                '删除',
+              )),
+            ],
+          ],
         );
     if (!mounted ||
         action == null ||
@@ -2391,14 +2371,52 @@ class _SessionsPageState extends State<SessionsPage> {
       child: Scaffold(
         key: shell,
         resizeToAvoidBottomInset: currentRoute,
+        drawerScrimColor: Colors.transparent,
+        // The drawer frosts the whole screen; the sidebar takes most of the
+        // width and the blurred strip beside it closes the drawer on tap.
         drawer: docked
             ? null
             : Drawer(
-                width: (MediaQuery.sizeOf(context).width * .87)
-                    .clamp(260, 400)
-                    .toDouble(),
-                backgroundColor: color,
-                child: sidebar,
+                width: MediaQuery.sizeOf(context).width,
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                shape: const RoundedRectangleBorder(),
+                // A light blur over the whole screen keeps the chat visible
+                // beside the sidebar; the sidebar itself is denser frost.
+                child: GlassBackdrop(
+                  tint: color,
+                  blur: 12,
+                  opacity: .18,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: (MediaQuery.sizeOf(context).width * .84)
+                            .clamp(260, 420)
+                            .toDouble(),
+                        // A floating glass card inset from the screen edge,
+                        // its corners concentric with the display's.
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 0, 8),
+                          child: GlassSurface(
+                            radius: 28,
+                            tint: color,
+                            opacity:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? .7
+                                : .72,
+                            child: sidebar ?? const SizedBox.shrink(),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => shell.currentState?.closeDrawer(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
         onDrawerChanged: (visible) {
           if (docked || drawerVisible == visible) return;
@@ -2542,7 +2560,21 @@ class _SessionsPageState extends State<SessionsPage> {
         : null,
   );
 
-  Future<void> openCron({String? jobId}) async {
+  Future<void> openCronJobs() async {
+    final owner = profile;
+    final choice = await chooseCronJob(
+      context,
+      gateway: widget.gateway,
+      profile: owner,
+    );
+    if (!mounted || choice == null || profile != owner) return;
+    await openCron(
+      jobId: choice.jobId,
+      create: choice.intent == CronSheetIntent.create,
+    );
+  }
+
+  Future<void> openCron({String? jobId, bool create = false}) async {
     final owner = profile;
     shell.currentState?.closeDrawer();
     final run = await Navigator.of(context).push<Json>(
@@ -2551,6 +2583,7 @@ class _SessionsPageState extends State<SessionsPage> {
           gateway: widget.gateway,
           profile: owner,
           initialJobId: jobId,
+          startCreating: create,
           openConversation: (row) => Navigator.pop(route, row),
         ),
       ),
@@ -2573,12 +2606,12 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Future<void> openSettings() async {
-    shell.currentState?.closeDrawer();
     final tab = tabs.active;
     final session = tab?.session;
     await Navigator.push<void>(
       context,
-      MaterialPageRoute(
+      floatingPageRoute<void>(
+        context,
         builder: (_) => MobileSettingsPage(
           gateway: widget.gateway,
           profile: profile,
@@ -2600,18 +2633,28 @@ class _SessionsPageState extends State<SessionsPage> {
       profiles[name]?.displayLabel(context.strings) ??
       context.strings.profileName(name);
 
+  /// Section titles ([strong]) read as headings; date groups stay quiet.
   Widget libraryHeading(
     BuildContext context,
     String label, {
-    double gutter = 10,
+    bool strong = false,
   }) => Padding(
-    padding: EdgeInsetsDirectional.fromSTEB(gutter, 14, 10, 3),
+    padding: EdgeInsetsDirectional.fromSTEB(
+      strong ? 22 : 12,
+      strong ? 18 : 12,
+      10,
+      strong ? 6 : 2,
+    ),
     child: Semantics(
       header: true,
       child: Text(
         context.tr(label),
-        style: Theme.of(context).textTheme.labelMedium
-            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        style: strong
+            ? Theme.of(context).textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)
+            : Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
       ),
     ),
   );
@@ -2695,12 +2738,8 @@ class _SessionsPageState extends State<SessionsPage> {
   Widget library(BuildContext context) => SafeArea(
     bottom: false,
     child: LayoutBuilder(
-      builder: (context, bounds) => buildLibrary(
-        context,
-        narrow: bounds.maxWidth < 327,
-        short: bounds.maxHeight < 295,
-        stickyCron: bounds.maxHeight >= 550,
-      ),
+      builder: (context, bounds) =>
+          buildLibrary(context, short: bounds.maxHeight < 295),
     ),
   );
 
@@ -2719,239 +2758,189 @@ class _SessionsPageState extends State<SessionsPage> {
     return load(retain: cached != null);
   }
 
-  Widget buildLibrary(
-    BuildContext context, {
-    required bool narrow,
-    required bool short,
-    required bool stickyCron,
-  }) {
-    final c = Theme.of(context).colorScheme;
+  Future<void> chooseProfile(Rect anchor) async {
+    final chosen = await showGlassMenu<Object>(
+      context,
+      anchor: anchor,
+      width: 240,
+      items: [
+        for (final p in profiles.values)
+          GlassMenuItem(
+            value: p.name,
+            icon: p.name == profile
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            label: profileLabel(p.name),
+          ),
+        GlassMenuItem(
+          value: _ProfileMenuAction.manage,
+          icon: Icons.manage_accounts_outlined,
+          label: context.tr('管理档案'),
+          separated: true,
+        ),
+        GlassMenuItem(
+          value: _ProfileMenuAction.refresh,
+          icon: Icons.refresh_rounded,
+          label: context.tr('刷新配置档案列表'),
+        ),
+      ],
+    );
+    if (!mounted) return;
+    switch (chosen) {
+      case _ProfileMenuAction.manage:
+        manageProfiles();
+      case _ProfileMenuAction.refresh:
+        load(refreshProfiles: true, retain: true);
+      case String p when p != profile:
+        selectTab(
+          tabs.preferredOpen(p) ?? tabs.activate(p, null),
+          closeDrawer: false,
+        );
+    }
+  }
+
+  Future<void> libraryMore(Rect anchor) async {
+    final chosen = await showGlassMenu<_LibraryMore>(
+      context,
+      anchor: anchor,
+      width: 236,
+      items: [
+        GlassMenuItem(
+          value: _LibraryMore.bookmarks,
+          icon: Icons.bookmarks_outlined,
+          label: context.tr('消息书签'),
+        ),
+        GlassMenuItem(
+          value: _LibraryMore.archive,
+          icon: Icons.archive_outlined,
+          label: context.tr(archived ? '返回会话' : '已归档'),
+          enabled: !mutating,
+        ),
+        GlassMenuItem(
+          value: _LibraryMore.profiles,
+          icon: Icons.manage_accounts_outlined,
+          label: context.tr('管理档案'),
+          separated: true,
+        ),
+        GlassMenuItem(
+          value: _LibraryMore.gateway,
+          icon: Icons.dns_outlined,
+          label: context.tr('切换网关'),
+          enabled: widget.onSwitchGateway != null,
+        ),
+      ],
+    );
+    if (!mounted || chosen == null) return;
+    switch (chosen) {
+      case _LibraryMore.bookmarks:
+        openBookmarks();
+      case _LibraryMore.archive:
+        toggleArchive();
+      case _LibraryMore.profiles:
+        manageProfiles();
+      case _LibraryMore.gateway:
+        shell.currentState?.closeDrawer();
+        widget.onSwitchGateway?.call();
+    }
+  }
+
+  void stopSearching() {
+    search.clear();
+    filter('');
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => searching = false);
+  }
+
+  /// The sidebar reads as one sheet of frosted glass: profile at the top,
+  /// four large destinations, then the conversations as plain rows. New
+  /// chat, search and settings float at the bottom within thumb reach.
+  Widget buildLibrary(BuildContext context, {required bool short}) {
+    final theme = Theme.of(context);
+    final c = theme.colorScheme;
     final (:pins, :sessions) = libraryRows;
-    final showCron =
-        profile.isNotEmpty && MediaQuery.viewInsetsOf(context).bottom == 0;
-    final schedule = showCron
-        ? CronSidebar(
-            gateway: widget.gateway,
-            profile: profile,
-            visible: libraryVisible,
-            expanded: tabs.cronExpanded,
-            onToggle: () {
-              setState(() {
-                tabs.cronExpanded = !tabs.cronExpanded;
-                tabsDirty = true;
-              });
-              saveTabs();
-            },
-            onOpen: mutating ? null : (jobId) => openCron(jobId: jobId),
-          )
-        : null;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final showSearch = searching || query.isNotEmpty;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Stack(
           children: [
-            if (!short)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 6, 2),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: PopupMenuButton<Object>(
-                        tooltip: context.tr('切换配置档案'),
-                        position: PopupMenuPosition.under,
-                        onSelected: (value) {
-                          switch (value) {
-                            case _ProfileMenuAction.manage:
-                              manageProfiles();
-                            case _ProfileMenuAction.refresh:
-                              load(refreshProfiles: true, retain: true);
-                            case String p when p != profile:
-                              selectTab(
-                                tabs.preferredOpen(p) ?? tabs.activate(p, null),
-                                closeDrawer: false,
-                              );
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          for (final p in profiles.values)
-                            CheckedPopupMenuItem(
-                              value: p.name,
-                              checked: p.name == profile,
-                              child: Text(profileLabel(p.name)),
-                            ),
-                          const PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: _ProfileMenuAction.manage,
-                            child: Text(context.tr('管理档案')),
-                          ),
-                          PopupMenuItem(
-                            value: _ProfileMenuAction.refresh,
-                            child: Text(context.tr('刷新配置档案列表')),
-                          ),
-                        ],
-                        child: Padding(
-                          padding: const EdgeInsets.all(6),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const BrandMark(size: 34),
-                              const SizedBox(width: 10),
-                              Flexible(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Hermes Lite',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: c.onSurfaceVariant,
-                                        letterSpacing: .2,
-                                      ),
-                                    ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            profile.isEmpty
-                                                ? context.tr('档案')
-                                                : profileLabel(profile),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w700,
-                                              letterSpacing: -.3,
-                                            ),
-                                          ),
-                                        ),
-                                        Icon(
-                                          Icons.unfold_more_rounded,
-                                          size: 17,
-                                          color: c.onSurfaceVariant,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: context.tr('设置'),
-                      onPressed: openSettings,
-                      icon: const Icon(Icons.settings_outlined, size: 21),
-                    ),
-                  ],
-                ),
-              ),
-            Padding(
-              key: const ValueKey('conversation-search'),
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: search,
-                      onChanged: filter,
-                      decoration: InputDecoration(
-                        hintText: context.tr('搜索当前档案的会话'),
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search, size: 20),
-                        suffixIcon: search.text.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: context.tr('清空搜索'),
-                                onPressed: () {
-                                  search.clear();
-                                  filter('');
-                                },
-                                icon: const Icon(Icons.close, size: 16),
-                              ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    tooltip: context.tr('新建会话'),
-                    onPressed: profile.isEmpty ? null : () => open(),
-                    style: IconButton.styleFrom(
-                      backgroundColor: c.onSurface,
-                      foregroundColor: c.surface,
-                      minimumSize: const Size(46, 46),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: const Icon(Icons.edit_square, size: 20),
-                  ),
-                ],
-              ),
-            ),
-            if (!short)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
-                child: Row(
-                  children: [
-                    for (final chip in [
-                      if (!archived) ...[
-                        PillChip(
-                          icon: Icons.mark_chat_unread_outlined,
-                          label: context.tr('未读'),
-                          onTap:
-                              sessionMetadata[profile]?.unreadRows.value == null
-                              ? null
-                              : openUnreadConversations,
-                        ),
-                        PillChip(
-                          icon: Icons.bolt_outlined,
-                          label: context.tr('进行中'),
-                          onTap: profile.isEmpty
-                              ? null
-                              : openActiveConversations,
-                        ),
-                      ],
-                      PillChip(
-                        icon: Icons.bookmarks_outlined,
-                        label: context.tr('书签'),
-                        onTap: openBookmarks,
-                      ),
-                      PillChip(
-                        icon: Icons.archive_outlined,
-                        label: context.tr('已归档'),
-                        selected: archived,
-                        onTap: mutating ? null : toggleArchive,
-                      ),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: chip,
-                      ),
-                  ],
-                ),
-              ),
-            Expanded(
+            Positioned.fill(
               child: RefreshIndicator(
                 onRefresh: load,
                 child: CustomScrollView(
                   key: PageStorageKey('$profile/$archived/$query'),
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
-                    if (!stickyCron && schedule != null)
-                      SliverToBoxAdapter(child: schedule),
+                    SliverToBoxAdapter(
+                      key: const ValueKey('conversation-search'),
+                      child: showSearch
+                          ? libraryFindBar(context)
+                          : libraryProfileBar(context),
+                    ),
+                    if (!short && !showSearch && !archived)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                        sliver: SliverToBoxAdapter(
+                          child: LibraryShortcuts(
+                            items: [
+                              LibraryShortcut(
+                                icon: Icons.bolt_rounded,
+                                label: context.tr('进行中'),
+                                count:
+                                    activeConversations[profile]?.length ?? 0,
+                                onTap: profile.isEmpty
+                                    ? null
+                                    : openActiveConversations,
+                              ),
+                              LibraryShortcut(
+                                icon: Icons.mark_chat_unread_outlined,
+                                label: context.tr('未读'),
+                                count: unreadConversationCount(profile),
+                                onTap:
+                                    sessionMetadata[profile]
+                                            ?.unreadRows
+                                            .value ==
+                                        null
+                                    ? null
+                                    : openUnreadConversations,
+                              ),
+                              LibraryShortcut(
+                                icon: Icons.schedule_rounded,
+                                label: context.tr('定时任务'),
+                                onTap: profile.isEmpty ? null : openCronJobs,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (archived)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 16, 4),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                tooltip: context.tr('返回会话'),
+                                onPressed: mutating ? null : toggleArchive,
+                                icon: const Icon(Icons.arrow_back_rounded),
+                              ),
+                              Text(
+                                context.tr('已归档'),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     if (pins.isNotEmpty) ...[
                       SliverToBoxAdapter(
-                        child: libraryHeading(context, '已置顶', gutter: 26),
+                        child: libraryHeading(context, '置顶', strong: true),
                       ),
                       SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         sliver: SliverReorderableList(
                           itemCount: pins.length,
                           onReorderItem: (from, to) =>
@@ -2966,10 +2955,10 @@ class _SessionsPageState extends State<SessionsPage> {
                                     child: Tooltip(
                                       message: context.tr('拖动排序'),
                                       child: SizedBox.square(
-                                        dimension: 48,
+                                        dimension: 44,
                                         child: Icon(
                                           Icons.drag_indicator_rounded,
-                                          size: 19,
+                                          size: 18,
                                           color: c.onSurfaceVariant,
                                         ),
                                       ),
@@ -2979,8 +2968,12 @@ class _SessionsPageState extends State<SessionsPage> {
                         ),
                       ),
                     ],
+                    if (!archived && sessions.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: libraryHeading(context, '会话', strong: true),
+                      ),
                     SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       sliver: SliverList.builder(
                         itemCount: sessions.length,
                         itemBuilder: (context, index) {
@@ -3003,51 +2996,68 @@ class _SessionsPageState extends State<SessionsPage> {
                       ),
                     ),
                     SliverToBoxAdapter(child: libraryFooter(context)),
+                    // Room to scroll the last rows above the floating bar.
+                    const SliverToBoxAdapter(child: SizedBox(height: 92)),
                   ],
                 ),
               ),
             ),
-            if (stickyCron && schedule != null) schedule,
-            if (!short && MediaQuery.viewInsetsOf(context).bottom == 0)
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
-                  child: Tooltip(
-                    message: context.tr('切换网关'),
-                    excludeFromSemantics: true,
-                    child: ListTile(
-                      dense: true,
-                      minTileHeight: 46,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      leading: Icon(
-                        Icons.dns_outlined,
-                        size: 19,
-                        color: c.onSurfaceVariant,
-                      ),
-                      minLeadingWidth: 20,
-                      title: Text(
-                        widget.gateway.base.host,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: c.onSurfaceVariant,
+            if (!keyboard)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        FilledButton.icon(
+                          onPressed: profile.isEmpty ? null : () => open(),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: c.onSurface,
+                            foregroundColor: c.surface,
+                            minimumSize: const Size(0, 52),
+                            padding: const EdgeInsets.symmetric(horizontal: 22),
+                            elevation: 4,
+                            shadowColor: Colors.black.withValues(alpha: .3),
+                          ),
+                          icon: const Icon(Icons.edit_square, size: 20),
+                          label: Text(
+                            context.tr('新建'),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
-                      ),
-                      trailing: Icon(
-                        Icons.swap_horiz_rounded,
-                        size: 19,
-                        color: c.onSurfaceVariant,
-                      ),
-                      onTap: widget.onSwitchGateway == null
-                          ? null
-                          : () {
-                              shell.currentState?.closeDrawer();
-                              widget.onSwitchGateway?.call();
-                            },
+                        const Spacer(),
+                        GlassSurface(
+                          radius: 26,
+                          child: SizedBox(
+                            height: 52,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  tooltip: context.tr('搜索当前档案的会话'),
+                                  onPressed: () =>
+                                      setState(() => searching = true),
+                                  icon: const Icon(Icons.search_rounded),
+                                ),
+                                IconButton(
+                                  tooltip: context.tr('设置'),
+                                  onPressed: openSettings,
+                                  icon: const Icon(Icons.settings_outlined),
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -3057,4 +3067,90 @@ class _SessionsPageState extends State<SessionsPage> {
       ),
     );
   }
+
+  /// Profile switcher as one soft pill: round avatar, name, chevron.
+  Widget libraryProfileBar(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 4),
+      child: Row(
+        children: [
+          Flexible(
+            child: Builder(
+              builder: (anchor) => Material(
+                color: c.onSurface.withValues(alpha: .05),
+                shape: const StadiumBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => chooseProfile(globalRectOf(anchor)),
+                  child: Padding(
+                    padding: const EdgeInsetsDirectional.fromSTEB(5, 5, 12, 5),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipOval(child: const BrandMark(size: 30)),
+                        const SizedBox(width: 9),
+                        Flexible(
+                          child: Text(
+                            profile.isEmpty
+                                ? context.tr('档案')
+                                : profileLabel(profile),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 19,
+                          color: c.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const Spacer(),
+          Builder(
+            builder: (anchor) => IconButton(
+              tooltip: context.tr('更多'),
+              onPressed: () => libraryMore(globalRectOf(anchor)),
+              icon: Icon(Icons.more_horiz_rounded, color: c.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget libraryFindBar(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 12, 6, 6),
+    child: Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: search,
+            autofocus: searching,
+            onChanged: filter,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: context.tr('搜索当前档案的会话'),
+              isDense: true,
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            ),
+          ),
+        ),
+        TextButton(onPressed: stopSearching, child: Text(context.tr('取消'))),
+      ],
+    ),
+  );
 }
+
+enum _LibraryMore { bookmarks, archive, profiles, gateway }

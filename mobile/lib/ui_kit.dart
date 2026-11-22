@@ -1,4 +1,7 @@
-import 'dart:ui' show ImageFilter;
+import 'dart:math' as math;
+import 'dart:ui' show ImageFilter, lerpDouble;
+
+import 'package:flutter/physics.dart' show SpringDescription, SpringSimulation;
 
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:material_ui/material_ui.dart';
@@ -81,6 +84,95 @@ class GlassSurface extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Full-bleed frosted layer: blurs whatever is behind it and washes it with
+/// [tint], for drawers and overlays that cover the screen.
+class GlassBackdrop extends StatelessWidget {
+  const GlassBackdrop({
+    super.key,
+    required this.child,
+    this.tint,
+    this.blur = 30,
+    this.opacity,
+  });
+
+  final Widget child;
+  final Color? tint;
+  final double blur;
+
+  /// Wash strength; defaults to a heavy frost tuned per brightness.
+  final double? opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: ColoredBox(
+          color: (tint ?? theme.colorScheme.surface).withValues(
+            alpha: opacity ?? (dark ? .72 : .8),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// A page raised as a floating sheet over the current screen instead of
+/// replacing it; swipe down or the close button dismisses it.
+Route<T> floatingPageRoute<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+}) => ModalBottomSheetRoute<T>(
+  isScrollControlled: true,
+  useSafeArea: true,
+  backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+  modalBarrierColor: Colors.black.withValues(alpha: .22),
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+  ),
+  clipBehavior: Clip.antiAlias,
+  builder: (sheet) =>
+      FractionallySizedBox(heightFactor: .97, child: builder(sheet)),
+);
+
+/// Header for a [floatingPageRoute] page: round close button, centred title.
+class FloatingPageBar extends StatelessWidget implements PreferredSizeWidget {
+  const FloatingPageBar({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(72);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+    child: Row(
+      children: [
+        GlassIconButton(
+          icon: Icons.close_rounded,
+          tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        Expanded(
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(width: 44),
+      ],
+    ),
+  );
 }
 
 /// Round glass button for the floating chat chrome.
@@ -210,16 +302,30 @@ class _GlassMenuRoute<T> extends PopupRoute<T> {
   final String barrierLabel;
 
   @override
-  Color? get barrierColor => Colors.black.withValues(alpha: .06);
+  Color? get barrierColor => Colors.black.withValues(alpha: .05);
 
   @override
   bool get barrierDismissible => true;
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 200);
+  Duration get transitionDuration => const Duration(milliseconds: 460);
 
   @override
-  Duration get reverseTransitionDuration => const Duration(milliseconds: 140);
+  Duration get reverseTransitionDuration => const Duration(milliseconds: 220);
+
+  double get _rowHeight => prominent ? 50 : 42;
+  double get _padding => prominent ? 8 : 6;
+
+  /// Rows have fixed heights, so the final size is known before layout and
+  /// the shell can morph straight to it.
+  double get _contentHeight {
+    var height = _padding * 2;
+    for (final (index, item) in items.indexed) {
+      if (item.separated && index > 0) height += 9;
+      height += _rowHeight;
+    }
+    return height;
+  }
 
   @override
   Widget buildPage(
@@ -238,72 +344,105 @@ class _GlassMenuRoute<T> extends PopupRoute<T> {
     final maxHeight = above
         ? anchor.top - safe.top - 16
         : screen.height - anchor.bottom - safe.bottom - 16;
-    final origin = Alignment(alignRight ? 1 : -1, above ? 1 : -1);
-    final curved = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+    final height = math.min(_contentHeight, maxHeight);
+    final target = Rect.fromLTWH(
+      left,
+      above ? anchor.top - 8 - height : anchor.bottom + 8,
+      width,
+      height,
     );
-    final menu = Material(
+    final radius = prominent ? 30.0 : 22.0;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final content = Material(
       type: MaterialType.transparency,
-      child: FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween(begin: .86, end: 1.0).animate(curved),
-          alignment: origin,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: width),
-            child: GlassSurface(
-              radius: prominent ? 30 : 22,
-              opacity: Theme.of(context).brightness == Brightness.dark
-                  ? .78
-                  : .86,
-              padding: EdgeInsets.symmetric(vertical: prominent ? 8 : 6),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (index, item) in items.indexed) ...[
-                      if (item.separated && index > 0)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
-                          child: Divider(
-                            height: 1,
-                            thickness: .6,
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                        ),
-                      _GlassMenuRow(
-                        item: item,
-                        prominent: prominent,
-                        onTap: () => Navigator.pop(context, item.value),
-                      ),
-                    ],
-                  ],
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(vertical: _padding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (index, item) in items.indexed) ...[
+              if (item.separated && index > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: Divider(
+                    height: 1,
+                    thickness: .6,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
+              _GlassMenuRow(
+                item: item,
+                prominent: prominent,
+                onTap: () => Navigator.pop(context, item.value),
               ),
-            ),
-          ),
+            ],
+          ],
         ),
       ),
     );
-    return Stack(
-      children: [
-        Positioned(
-          left: left,
-          top: above ? null : anchor.bottom + 8,
-          bottom: above ? screen.height - anchor.top + 8 : null,
-          width: width,
-          child: menu,
-        ),
-      ],
+    // The menu starts as a blob the size of the button that opened it and
+    // springs out to its full shape, so it reads as a droplet splitting off
+    // the button; closing pulls it back in.
+    return AnimatedBuilder(
+      animation: animation,
+      child: content,
+      builder: (context, child) {
+        final t = animation.value;
+        final opening = animation.status != AnimationStatus.reverse;
+        final shape = opening
+            ? _dropletSpring.transform(t)
+            : Curves.easeOutCubic.transform(t);
+        final rect = Rect.lerp(anchor, target, shape)!;
+        final reveal = ((t - (opening ? .3 : .45)) / .4).clamp(0.0, 1.0);
+        return Stack(
+          children: [
+            Positioned.fromRect(
+              rect: rect,
+              child: GlassSurface(
+                radius: lerpDouble(
+                  anchor.shortestSide / 2,
+                  radius,
+                  shape.clamp(0.0, 1.0),
+                )!,
+                opacity: dark ? .78 : .86,
+                child: OverflowBox(
+                  alignment: Alignment(alignRight ? 1 : -1, above ? 1 : -1),
+                  minWidth: width,
+                  maxWidth: width,
+                  minHeight: height,
+                  maxHeight: height,
+                  child: Opacity(opacity: reveal, child: child),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
+
+/// Lightly under-damped spring: about 8% overshoot, settled within the
+/// transition, which gives the opening its liquid wobble.
+class _DropletSpring extends Curve {
+  const _DropletSpring();
+
+  static final _simulation = SpringSimulation(
+    const SpringDescription(mass: 1, stiffness: 260, damping: 20),
+    0,
+    1,
+    0,
+  );
+
+  @override
+  double transformInternal(double t) => _simulation.x(t * .46);
+}
+
+const _dropletSpring = _DropletSpring();
 
 class _GlassMenuRow<T> extends StatelessWidget {
   const _GlassMenuRow({
@@ -359,6 +498,440 @@ class _GlassMenuRow<T> extends StatelessWidget {
                     fontWeight: prominent ? FontWeight.w500 : FontWeight.w400,
                     color: foreground,
                   ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// One entry in a [showGlassActionSheet].
+class GlassSheetAction<T> {
+  const GlassSheetAction({
+    required this.value,
+    required this.icon,
+    required this.label,
+    this.enabled = true,
+    this.destructive = false,
+  });
+
+  final T value;
+  final IconData icon;
+  final String label;
+  final bool enabled, destructive;
+}
+
+/// Fill for a rounded group or tile sitting on glass.
+Color glassGroupColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? Colors.white.withValues(alpha: .06)
+    : Colors.black.withValues(alpha: .04);
+
+/// The floating glass card the sidebar and conversation sheets share: grab
+/// handle, a title with optional subtitle and header buttons, then [child].
+class GlassSheetFrame extends StatelessWidget {
+  const GlassSheetFrame({
+    super.key,
+    required this.child,
+    this.title,
+    this.subtitle,
+    this.actions = const [],
+    this.expand = false,
+  });
+
+  final String? title, subtitle;
+  final List<Widget> actions;
+  final Widget child;
+
+  /// Lets [child] fill the frame's height (scrolling lists) instead of
+  /// sizing the frame to its content.
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final heading = title;
+    final detail = subtitle;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: GlassSurface(
+          radius: 30,
+          opacity: dark ? .84 : .92,
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+          child: Column(
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 6),
+                  decoration: BoxDecoration(
+                    color: colors.onSurfaceVariant.withValues(alpha: .25),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              if (heading != null)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    10,
+                    actions.isEmpty ? 6 : 0,
+                    actions.isEmpty ? 10 : 0,
+                    10,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Semantics(
+                          header: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                heading,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -.2,
+                                ),
+                              ),
+                              if (detail != null && detail.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 1),
+                                  child: Text(
+                                    detail,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      ...actions,
+                    ],
+                  ),
+                ),
+              if (expand) Expanded(child: child) else Flexible(child: child),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows a glass sheet. List sheets pass [heightFactor] so the frame keeps
+/// one height while its content loads.
+Future<T?> showGlassSheet<T>(
+  BuildContext context, {
+  required Widget Function(BuildContext sheet) builder,
+  double? heightFactor,
+}) {
+  FocusManager.instance.primaryFocus?.unfocus();
+  return showModalBottomSheet<T>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    isScrollControlled: true,
+    useSafeArea: true,
+    barrierColor: Colors.black.withValues(alpha: .18),
+    builder: (sheet) => heightFactor == null
+        ? builder(sheet)
+        : SizedBox(
+            height: MediaQuery.sizeOf(sheet).height * heightFactor,
+            child: builder(sheet),
+          ),
+  );
+}
+
+/// Floating glass action sheet: a title, up to four quick actions as icon
+/// tiles, then rows in rounded groups.
+Future<T?> showGlassActionSheet<T>(
+  BuildContext context, {
+  String? title,
+  String? subtitle,
+  List<GlassSheetAction<T>> quick = const [],
+  required List<List<GlassSheetAction<T>>> groups,
+}) => showGlassSheet<T>(
+  context,
+  builder: (sheet) => GlassSheetFrame(
+    title: title,
+    subtitle: subtitle,
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (quick.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  for (final (index, action) in quick.indexed) ...[
+                    if (index > 0) const SizedBox(width: 8),
+                    Expanded(
+                      child: GlassTile(
+                        icon: action.icon,
+                        label: action.label,
+                        onTap: action.enabled
+                            ? () => Navigator.pop(sheet, action.value)
+                            : null,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          for (final (index, rows) in groups
+              .where((rows) => rows.isNotEmpty)
+              .indexed)
+            Padding(
+              padding: EdgeInsets.only(top: index == 0 ? 0 : 8),
+              child: GlassGroup(
+                children: [
+                  for (final action in rows)
+                    _SheetRow(
+                      action: action,
+                      onTap: () => Navigator.pop(sheet, action.value),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  ),
+);
+
+/// Icon-over-label tile, used for quick actions and the sidebar shortcuts.
+/// A [count] badge sits on the icon when something is waiting.
+class GlassTile extends StatelessWidget {
+  const GlassTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.count = 0,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final foreground = onTap != null
+        ? colors.onSurface
+        : colors.onSurface.withValues(alpha: .35);
+    return Material(
+      color: glassGroupColor(context),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 99 ? '99+' : '$count'),
+                backgroundColor: colors.primary,
+                textColor: colors.onPrimary,
+                offset: const Offset(10, -6),
+                child: Icon(icon, size: 22, color: foreground),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: foreground,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded group of rows on glass, with hairlines inset past the icons.
+class GlassGroup extends StatelessWidget {
+  const GlassGroup({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = Theme.of(context).colorScheme.onSurface.withValues(alpha: .07);
+    return Material(
+      color: glassGroupColor(context),
+      borderRadius: BorderRadius.circular(20),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (index, child) in children.indexed) ...[
+            if (index > 0)
+              Divider(height: .5, thickness: .5, indent: 50, color: line),
+            child,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A row for glass list sheets: leading icon, title, optional subtitle and
+/// trailing widget.
+class GlassListRow extends StatelessWidget {
+  const GlassListRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final detail = subtitle;
+    final end = trailing;
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
+        child: Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            16,
+            8,
+            end == null ? 16 : 4,
+            8,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: iconColor ?? colors.onSurfaceVariant),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                    if (detail != null && detail.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          detail,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              ?end,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Centred note for an empty, loading-failed or loading list sheet.
+Widget glassSheetMessage(BuildContext context, String text, {Widget? action}) =>
+    Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          ?action,
+        ],
+      ),
+    );
+
+class _SheetRow<T> extends StatelessWidget {
+  const _SheetRow({required this.action, required this.onTap});
+
+  final GlassSheetAction<T> action;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final tone = action.destructive ? colors.error : colors.onSurface;
+    final foreground = action.enabled ? tone : tone.withValues(alpha: .35);
+    return InkWell(
+      onTap: action.enabled ? onTap : null,
+      child: SizedBox(
+        height: 48,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Icon(action.icon, size: 20, color: foreground),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  action.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 15, color: foreground),
                 ),
               ),
             ],
@@ -490,7 +1063,10 @@ class SettingsGroup extends StatelessWidget {
           ),
           Material(
             color: colors.surface,
-            borderRadius: BorderRadius.circular(20),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: colors.outlineVariant, width: .8),
+            ),
             clipBehavior: Clip.antiAlias,
             child: ListTileTheme.merge(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),

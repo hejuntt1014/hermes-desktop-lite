@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
     private val alerts by lazy { MobileAlerts(this) }
     private val fileDrop by lazy { MobileFileDrop(this) }
     private val shares by lazy { MobileShares(this) }
+    private val loginBrowser by lazy { MobileLoginBrowser(this) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -25,6 +26,7 @@ class MainActivity : FlutterActivity() {
         MobileClipboard(this).attach(flutterEngine.dartExecutor.binaryMessenger)
         fileDrop.attach(flutterEngine.dartExecutor.binaryMessenger)
         shares.attach(flutterEngine.dartExecutor.binaryMessenger)
+        loginBrowser.attach(flutterEngine.dartExecutor.binaryMessenger)
         if (shares.receive(intent)) setIntent(Intent(Intent.ACTION_MAIN))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "hermes_lite/file_export")
             .setMethodCallHandler { call, reply ->
@@ -79,6 +81,7 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Called by the system document picker")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (loginBrowser.onActivityResult(requestCode)) return
         if (requestCode != exportRequest) return
         val export = activeExport ?: return
         val destination = data?.data

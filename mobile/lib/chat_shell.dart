@@ -300,7 +300,8 @@ extension _ChatQuickAccess on _ChatPageState {
 
   Future<void> openMobileSettings() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(
+      floatingPageRoute<void>(
+        context,
         builder: (_) => MobileSettingsPage(
           gateway: widget.gateway,
           profile: widget.profile,

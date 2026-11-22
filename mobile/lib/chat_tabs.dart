@@ -116,7 +116,6 @@ class ChatTabs {
   final _sessionColors = <String, Map<String, SessionTitleColor>>{};
   final _lastProfileTabs = <String, String>{};
   String? _activeId;
-  bool cronExpanded = false;
   bool wakeEnabled = false;
 
   String? get activeId => _activeId;
@@ -317,7 +316,6 @@ class ChatTabs {
     'closed': closed.map((tab) => tab.toWire()).toList(),
     'active': activeId,
     if (_lastProfileTabs.isNotEmpty) 'last_profile_tabs': _lastProfileTabs,
-    if (cronExpanded) 'cron_expanded': true,
     if (wakeEnabled) 'wake_enabled': true,
     if (pinOrder.isNotEmpty) 'pins': pinOrder,
     if (_sessionColors.isNotEmpty)
@@ -332,7 +330,6 @@ class ChatTabs {
 
   static ChatTabs fromWire(Json wire) {
     final tabs = ChatTabs();
-    tabs.cronExpanded = wire['cron_expanded'] == true;
     tabs.wakeEnabled = wire['wake_enabled'] == true;
     Iterable<ChatTab> read(Object? value) => value is List
         ? value.whereType<Json>().map(ChatTab.fromWire).nonNulls

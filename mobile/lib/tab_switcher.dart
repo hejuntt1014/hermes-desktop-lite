@@ -113,9 +113,9 @@ class _TabSwitcherState extends State<_TabSwitcher> {
     if (scroll case final existing?) return existing;
     final index = tabs.indexWhere((tab) => tab.id == widget.active);
     final row = index < 0 ? 0 : index ~/ columns;
-    final cardHeight = (width - 28 - (columns - 1) * 14) / columns / 1.02;
+    const cardHeight = _cardHeight;
     return scroll = ScrollController(
-      initialScrollOffset: row <= 1 ? 0 : (row - 1) * (cardHeight + 14),
+      initialScrollOffset: row <= 2 ? 0 : (row - 2) * (cardHeight + 10),
     );
   }
 
@@ -170,11 +170,7 @@ class _TabSwitcherState extends State<_TabSwitcher> {
     final dark = theme.brightness == Brightness.dark;
     final mixedProfiles = tabs.map((tab) => tab.profile).toSet().length > 1;
     final width = MediaQuery.sizeOf(context).width;
-    final columns = width >= 900
-        ? 4
-        : width >= 600
-        ? 3
-        : 2;
+    final columns = width >= 680 ? 2 : 1;
     final canReopen = widget.actions.onReopen != null;
     final bottomSafe = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
@@ -205,9 +201,9 @@ class _TabSwitcherState extends State<_TabSwitcher> {
                       sliver: SliverGrid.builder(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
-                          mainAxisSpacing: 14,
-                          crossAxisSpacing: 14,
-                          childAspectRatio: 1.02,
+                          mainAxisSpacing: 10,
+                          crossAxisSpacing: 10,
+                          mainAxisExtent: _cardHeight,
                         ),
                         itemCount: tabs.length,
                         itemBuilder: (context, index) {
@@ -372,6 +368,21 @@ class _TabSwitcherState extends State<_TabSwitcher> {
   }
 }
 
+const _cardHeight = 84.0;
+
+/// Soft avatar tones; a tab keeps its tone because it hashes its title.
+const _avatarTones = [
+  Color(0xff5b6cf0),
+  Color(0xff1f9d8f),
+  Color(0xffd9822b),
+  Color(0xffc2457a),
+  Color(0xff7a5af0),
+  Color(0xff2f8fd8),
+  Color(0xff5f8f3a),
+];
+
+/// One open conversation as a message-list row: avatar, title and time,
+/// two lines of preview, and a close button. The current tab is tinted.
 class _TabCard extends StatelessWidget {
   const _TabCard({
     required this.tab,
@@ -399,6 +410,8 @@ class _TabCard extends StatelessWidget {
     final row = tab.row;
     final unread = row?['unread'] == true;
     final draft = tab.draft.trim();
+    final title =
+        tab.title ?? context.tr(tab.session == null ? '新会话' : '未命名会话');
     final preview = switch (row?['preview']) {
       final String text when text.trim().isNotEmpty => text.trim(),
       _ => null,
@@ -410,159 +423,160 @@ class _TabCard extends StatelessWidget {
     final stamp = time == null
         ? null
         : MaterialLocalizations.of(context).formatShortMonthDay(time);
-    final footer = [?profile, ?stamp].join(' · ');
-    final surface = dark ? colors.surfaceContainerHigh : colors.surface;
-    const radius = 22.0;
+    final base = dark ? colors.surfaceContainerHigh : colors.surface;
+    final surface = selected
+        ? Color.alphaBlend(
+            colors.primary.withValues(alpha: dark ? .22 : .09),
+            base,
+          )
+        : base;
+    final tone = _avatarTones[title.hashCode.abs() % _avatarTones.length];
+    final initial = title.characters.firstOrNull ?? '·';
     return Semantics(
       selected: selected,
       button: true,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.all(3),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius + 3),
-          border: Border.all(
-            color: selected ? colors.primary : Colors.transparent,
-            width: 2,
-          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? .25 : .045),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: dark ? .3 : .06),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Material(
-            color: surface,
-            borderRadius: BorderRadius.circular(radius),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onTap,
-              onLongPress: onLongPress,
-              onSecondaryTap: onLongPress,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Material(
+          color: surface,
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            onSecondaryTap: onLongPress,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 6, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Preview pane: the conversation's latest words, fading
-                  // out, as a stand-in for a page thumbnail.
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: ColoredBox(
-                            color: dark
-                                ? Colors.white.withValues(alpha: .03)
-                                : colors.surfaceContainerLow,
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-                              child: ShaderMask(
-                                shaderCallback: (rect) => const LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [Colors.black, Colors.transparent],
-                                  stops: [.55, 1],
-                                ).createShader(rect),
-                                blendMode: BlendMode.dstIn,
-                                child: Text(
-                                  body,
-                                  overflow: TextOverflow.clip,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colors.onSurfaceVariant,
-                                    height: 1.5,
-                                    fontStyle: draft.isNotEmpty
-                                        ? FontStyle.italic
-                                        : null,
-                                  ),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: tone.withValues(alpha: dark ? .28 : .14),
+                          shape: BoxShape.circle,
+                        ),
+                        child: tab.session == null
+                            ? Icon(Icons.edit_rounded, size: 18, color: tone)
+                            : Text(
+                                initial,
+                                style: TextStyle(
+                                  color: tone,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ),
-                          ),
-                        ),
+                      ),
+                      if (activity != null || unread)
                         Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Material(
-                            color: surface.withValues(alpha: .9),
-                            shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: onClose,
-                              child: Tooltip(
-                                message: context.tr('关闭标签'),
-                                child: SizedBox.square(
-                                  dimension: 28,
-                                  child: Icon(
-                                    Icons.close_rounded,
-                                    size: 16,
-                                    color: colors.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
+                          right: -3,
+                          bottom: -3,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: surface,
+                              shape: BoxShape.circle,
+                            ),
+                            child: ConversationIndicator(
+                              activity: activity,
+                              unread: unread,
+                              size: 13,
                             ),
                           ),
                         ),
-                        if (draft.isNotEmpty)
-                          Positioned(
-                            left: 10,
-                            bottom: 8,
-                            child: _Tag(
-                              label: context.tr('草稿'),
-                              color: colors.tertiary,
-                            ),
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 12, 12),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            if (activity != null || unread) ...[
-                              ConversationIndicator(
-                                activity: activity,
-                                unread: unread,
-                                size: 13,
-                              ),
-                              const SizedBox(width: 5),
-                            ],
                             Expanded(
                               child: Text(
-                                tab.title ??
-                                    context.tr(
-                                      tab.session == null ? '新会话' : '未命名会话',
-                                    ),
+                                title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: -.2,
-                                  color: titleColor?.onBackground(surface),
+                                  color:
+                                      titleColor?.onBackground(surface) ??
+                                      colors.onSurface,
                                 ),
                               ),
                             ),
+                            if (selected)
+                              _Tag(
+                                label: context.tr('当前'),
+                                color: colors.primary,
+                              )
+                            else if (stamp != null)
+                              Text(
+                                stamp,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
                           ],
                         ),
-                        if (footer.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(
-                              footer,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colors.onSurfaceVariant,
-                              ),
+                        const SizedBox(height: 3),
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                if (draft.isNotEmpty)
+                                  TextSpan(
+                                    text: '${context.tr('草稿')} · ',
+                                    style: TextStyle(
+                                      color: colors.tertiary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                if (profile != null)
+                                  TextSpan(
+                                    text: '$profile · ',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                TextSpan(text: body.replaceAll('\n', ' ')),
+                              ],
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                              height: 1.4,
                             ),
                           ),
+                        ),
                       ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: context.tr('关闭标签'),
+                    onPressed: onClose,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 17,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                 ],

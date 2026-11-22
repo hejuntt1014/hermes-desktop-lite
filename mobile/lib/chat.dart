@@ -58,6 +58,7 @@ import 'message_bookmarks.dart';
 import 'quick_access.dart';
 import 'tab_switcher.dart' show TabCountButton;
 import 'ui_kit.dart';
+import 'voice_views.dart';
 import 'mobile_settings.dart';
 import 'mobile_voice.dart';
 import 'mobile_wake.dart';
@@ -216,6 +217,7 @@ class _ChatPageState extends State<ChatPage> {
   /// clear; measured after each layout.
   final dockHeight = ValueNotifier<double>(0);
   bool compactChrome = false;
+  bool keyboardWasUp = false;
   final pinnedQuestion = ValueNotifier<_PinnedQuestion?>(null);
   _ReadingTimeline? shownReadingTimeline;
   bool readingIndicatorsScheduled = false, newHistoryWhileReading = false;

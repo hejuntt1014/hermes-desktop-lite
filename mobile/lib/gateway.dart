@@ -371,7 +371,7 @@ class Gateway {
   }
 
   Future<bool> openLoginPage(Uri uri) async {
-    if (!Platform.isIOS) {
+    if (!Platform.isIOS && !Platform.isAndroid) {
       return launchUrl(uri, mode: LaunchMode.externalApplication);
     }
     final outcome = await _loginBrowser.invokeMethod<String>(
@@ -379,6 +379,9 @@ class Gateway {
       uri.toString(),
     );
     if (outcome == 'cancelled') throw GatewayError('已取消浏览器登录');
+    if (Platform.isAndroid && outcome == 'unavailable') {
+      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
     return outcome == 'closed';
   }
 
@@ -432,10 +435,34 @@ class Gateway {
       _abortLogin = () {
         if (!result.isCompleted) result.completeError(GatewayDisconnected());
       };
-      final browser = openLoginPage(uri).then((opened) {
+      final browser = () async {
+        if (Platform.isAndroid && await _passwordOnlyGateway()) {
+          if (closed || result.isCompleted) throw GatewayDisconnected();
+          final location = await _loginBrowser.invokeMethod<String>(
+            'password',
+            uri.toString(),
+          );
+          if (location == 'cancelled') throw GatewayError('已取消浏览器登录');
+          final callback = Uri.tryParse(location ?? '');
+          final code = callback?.queryParameters['code'];
+          if (callback == null ||
+              callback.scheme != 'http' ||
+              callback.host != '127.0.0.1' ||
+              callback.port != listener.port ||
+              callback.path != '/callback' ||
+              callback.userInfo.isNotEmpty ||
+              callback.queryParameters['state'] != state ||
+              code == null ||
+              code.isEmpty) {
+            throw GatewayError('登录未获授权');
+          }
+          return code;
+        }
+        if (closed || result.isCompleted) throw GatewayDisconnected();
+        final opened = await openLoginPage(uri);
         if (!opened) throw GatewayError('无法打开登录页面');
         return result.future;
-      });
+      }();
       final code = await Future.any([result.future, browser]).timeout(
         const Duration(minutes: 5),
         onTimeout: () => throw GatewayError('浏览器登录超时'),
@@ -448,9 +475,22 @@ class Gateway {
     } finally {
       _abortLogin = null;
       await listener.close(force: true);
-      if (Platform.isIOS) {
+      if (Platform.isIOS || Platform.isAndroid) {
         await _loginBrowser.invokeMethod<void>('close', uri.toString());
       }
+    }
+  }
+
+  Future<bool> _passwordOnlyGateway() async {
+    try {
+      final info = await _request('api/auth/providers',
+          timeout: const Duration(seconds: 5), maxResponseBytes: 65536);
+      final providers = info is Json ? info['providers'] : null;
+      return providers is List && providers.isNotEmpty &&
+          providers.every((p) => p is Json && p['supports_password'] == true);
+    } on Exception {
+      // Older gateways may only expose the browser authorization endpoint.
+      return false;
     }
   }
 

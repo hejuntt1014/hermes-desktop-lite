@@ -42,6 +42,7 @@ class _AppearanceState {
     this.conversationBackdrop = true,
     this.autoReadReplies = false,
     this.restoreSession = true,
+    this.voiceEngineChosen = false,
     this.attachmentTransport = AttachmentTransport.automatic,
   });
 
@@ -59,6 +60,10 @@ class _AppearanceState {
   final bool conversationBackdrop;
   final bool autoReadReplies;
   final bool restoreSession;
+
+  /// Whether the user picked a voice engine in this app; until then calls
+  /// prefer GPT-Live whenever the gateway can run it.
+  final bool voiceEngineChosen;
   final AttachmentTransport attachmentTransport;
 
   static _AppearanceState fromWire(Json wire) {
@@ -131,6 +136,7 @@ class _AppearanceState {
       conversationBackdrop: wire['conversation_backdrop'] != false,
       autoReadReplies: wire['auto_read_replies'] == true,
       restoreSession: wire['restore_session'] != false,
+      voiceEngineChosen: wire['voice_engine_chosen'] == true,
       attachmentTransport:
           wire['attachment_transport'] == AttachmentTransport.base64.name
           ? AttachmentTransport.base64
@@ -162,6 +168,7 @@ class _AppearanceState {
     if (!conversationBackdrop) 'conversation_backdrop': false,
     if (autoReadReplies) 'auto_read_replies': true,
     if (!restoreSession) 'restore_session': false,
+    if (voiceEngineChosen) 'voice_engine_chosen': true,
     if (attachmentTransport != AttachmentTransport.automatic)
       'attachment_transport': attachmentTransport.name,
     'backgrounds': {
@@ -188,6 +195,7 @@ class _AppearanceState {
     bool? conversationBackdrop,
     bool? autoReadReplies,
     bool? restoreSession,
+    bool? voiceEngineChosen,
     AttachmentTransport? attachmentTransport,
   }) => _AppearanceState(
     language: language ?? this.language,
@@ -204,6 +212,7 @@ class _AppearanceState {
     conversationBackdrop: conversationBackdrop ?? this.conversationBackdrop,
     autoReadReplies: autoReadReplies ?? this.autoReadReplies,
     restoreSession: restoreSession ?? this.restoreSession,
+    voiceEngineChosen: voiceEngineChosen ?? this.voiceEngineChosen,
     attachmentTransport: attachmentTransport ?? this.attachmentTransport,
   );
 }
@@ -228,6 +237,7 @@ class MobileAppearance extends ChangeNotifier {
   bool get conversationBackdrop => _state.conversationBackdrop;
   bool get autoReadReplies => _state.autoReadReplies;
   bool get restoreSession => _state.restoreSession;
+  bool get voiceEngineChosen => _state.voiceEngineChosen;
   AttachmentTransport get attachmentTransport => _state.attachmentTransport;
   LitePalette get palette => _state.palette;
   List<MobileTheme> get customThemes => List.unmodifiable(_state.customThemes);
@@ -360,6 +370,11 @@ class MobileAppearance extends ChangeNotifier {
     (state) => state.restoreSession == restore
         ? state
         : state.copyWith(restoreSession: restore),
+  );
+  Future<void> markVoiceEngineChosen() => _change(
+    (state) => state.voiceEngineChosen
+        ? state
+        : state.copyWith(voiceEngineChosen: true),
   );
 
   Future<void> setAttachmentTransport(AttachmentTransport transport) => _change(
@@ -683,7 +698,7 @@ class MobileSettingsPage extends StatelessWidget {
         autofocus: true,
         skipTraversal: true,
         child: Scaffold(
-          appBar: AppBar(title: Text(context.tr('设置'))),
+          appBar: FloatingPageBar(title: context.tr('设置')),
           body: SafeArea(
             top: false,
             child: Align(

@@ -154,6 +154,7 @@ extension _ChatVoice on _ChatPageState {
         delegationFailure: context.tr('Hermes 暂时无法完成此请求。'),
         liveHistory: liveVoiceHistory,
         onNotice: showVoiceNotice,
+        preferLive: !MobileAppearance.shared.voiceEngineChosen,
         unavailable: () {
           if (mounted) {
             ScaffoldMessenger.of(context)
@@ -462,7 +463,9 @@ extension _ChatVoice on _ChatPageState {
 
   Future<void> openVoiceEngine() => showModalBottomSheet<void>(
     context: context,
-    showDragHandle: true,
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    barrierColor: Colors.black.withValues(alpha: .18),
     builder: (_) =>
         _VoiceEngineSheet(gateway: widget.gateway, profile: widget.profile),
   );
@@ -510,7 +513,13 @@ extension _ChatVoice on _ChatPageState {
     builder: (context, _) {
       final phase = voice.phase;
       final error = voice.error;
-      if (phase == VoicePhase.idle && error == null) {
+      // Calls and dictation have their own views; this row only reports
+      // read-aloud progress and errors left behind once voice goes idle.
+      if (phase == VoicePhase.idle && error == null ||
+          voice.inCall ||
+          phase == VoicePhase.opening ||
+          phase == VoicePhase.recording ||
+          phase == VoicePhase.transcribing) {
         return const SizedBox.shrink();
       }
       final label =
@@ -528,7 +537,6 @@ extension _ChatVoice on _ChatPageState {
                   VoicePhase.playing => '正在朗读',
                 });
       final color = Theme.of(context).colorScheme;
-      if (voice.inCall) return _voiceCallBar(label, color);
       final pending = switch (phase) {
         VoicePhase.opening ||
         VoicePhase.transcribing ||
@@ -584,88 +592,6 @@ extension _ChatVoice on _ChatPageState {
       );
     },
   );
-
-  Widget _voiceCallBar(String label, ColorScheme colors) => Container(
-    margin: const EdgeInsets.fromLTRB(18, 4, 18, 4),
-    padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
-    decoration: BoxDecoration(
-      color: colors.primaryContainer,
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _voiceCallControls(label, colors),
-        AnimatedSize(
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 160),
-          alignment: Alignment.topCenter,
-          child: voice.showStopHint
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 0, 8, 9),
-                  child: Text(
-                    context.tr('说「停止」即可结束通话'),
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: colors.onPrimaryContainer),
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
-    ),
-  );
-
-  Widget _voiceCallControls(String label, ColorScheme colors) => Row(
-    children: [
-      Icon(
-        Icons.graphic_eq_rounded,
-        color: colors.onPrimaryContainer,
-        size: 18,
-      ),
-      const SizedBox(width: 7),
-      Expanded(
-        child: Semantics(
-          liveRegion: true,
-          child: Text(
-            context.tr(label),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.onPrimaryContainer, fontSize: 12),
-          ),
-        ),
-      ),
-      if (voice.canFinishUtterance)
-        IconButton(
-          tooltip: context.tr('结束本轮收音'),
-          onPressed: voice.finishUtterance,
-          icon: const Icon(Icons.check_rounded, size: 19),
-        ),
-      IconButton(
-        tooltip: context.tr(voice.muted ? '取消麦克风静音' : '静音麦克风'),
-        onPressed: voice.toggleCallMute,
-        icon: Icon(
-          voice.muted ? Icons.mic_off_outlined : Icons.mic_none_rounded,
-          size: 19,
-        ),
-      ),
-      IconButton(
-        tooltip: context.tr(voice.callSpeaker ? '关闭语音播放' : '开启语音播放'),
-        onPressed: voice.toggleCallSpeaker,
-        icon: Icon(
-          voice.callSpeaker
-              ? Icons.volume_up_outlined
-              : Icons.volume_off_outlined,
-          size: 19,
-        ),
-      ),
-      IconButton.filled(
-        tooltip: context.tr('结束语音对话'),
-        onPressed: voice.cancel,
-        icon: const Icon(Icons.call_end_rounded, size: 19),
-      ),
-    ],
-  );
 }
 
 class _VoiceEngineSheet extends StatefulWidget {
@@ -697,6 +623,7 @@ class _VoiceEngineSheetState extends State<_VoiceEngineSheet> {
         widget.profile,
         live: live,
       );
+      await MobileAppearance.shared.markVoiceEngineChosen();
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
       if (mounted) setState(() => error = '未能切换语音引擎');
@@ -707,108 +634,226 @@ class _VoiceEngineSheetState extends State<_VoiceEngineSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        child: FutureBuilder<VoiceEngineStatus>(
-          future: status,
-          builder: (context, snapshot) {
-            final modes = snapshot.data;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: Text(
-                    context.tr('语音引擎'),
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-                if (snapshot.hasError)
-                  ListTile(
-                    title: Text(context.tr('无法读取语音引擎')),
-                    trailing: TextButton(
-                      onPressed: () => setState(
-                        () => status = VoiceEngineStatus.read(
-                          widget.gateway,
-                          widget.profile,
-                        ),
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: GlassSurface(
+          radius: 30,
+          opacity: theme.brightness == Brightness.dark ? .82 : .9,
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+          child: FutureBuilder<VoiceEngineStatus>(
+            future: status,
+            builder: (context, snapshot) {
+              final modes = snapshot.data;
+              // GPT-Live is the default until the user picks an engine here.
+              final live =
+                  modes != null &&
+                  modes.liveAvailable &&
+                  (modes.liveSelected ||
+                      !MobileAppearance.shared.voiceEngineChosen);
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: colors.onSurfaceVariant.withValues(alpha: .25),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      child: Text(context.tr('重试')),
                     ),
-                  )
-                else if (modes == null)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                else ...[
-                  _engineTile(
-                    context,
-                    icon: Icons.graphic_eq_rounded,
-                    title: context.tr('语音转文字'),
-                    subtitle: null,
-                    selected: !modes.liveSelected || !modes.liveAvailable,
-                    onTap: saving || modes.liveSelected && !modes.supported
-                        ? null
-                        : !modes.liveSelected
-                        ? () => Navigator.of(context).pop()
-                        : () => select(false),
                   ),
-                  _engineTile(
-                    context,
-                    icon: Icons.multitrack_audio_rounded,
-                    title: 'GPT-Live',
-                    subtitle: context.tr(
-                      modes.liveAvailable
-                          ? '使用会话最近消息作为实时语音上下文'
-                          : modes.supported
-                          ? '当前档案的 GPT-Live 不可用'
-                          : '网关未提供此语音功能',
-                    ),
-                    selected: modes.liveSelected && modes.liveAvailable,
-                    onTap: saving || !modes.liveAvailable
-                        ? null
-                        : modes.liveSelected
-                        ? () => Navigator.of(context).pop()
-                        : () => select(true),
-                  ),
-                ],
-                if (saving) const LinearProgressIndicator(minHeight: 2),
-                if (error case final message?)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    padding: const EdgeInsets.fromLTRB(6, 0, 6, 14),
                     child: Text(
-                      context.tr(message),
-                      style: TextStyle(color: colors.error),
+                      context.tr('语音引擎'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-              ],
-            );
-          },
+                  if (snapshot.hasError)
+                    ListTile(
+                      title: Text(context.tr('无法读取语音引擎')),
+                      trailing: TextButton(
+                        onPressed: () => setState(
+                          () => status = VoiceEngineStatus.read(
+                            widget.gateway,
+                            widget.profile,
+                          ),
+                        ),
+                        child: Text(context.tr('重试')),
+                      ),
+                    )
+                  else if (modes == null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 28),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else ...[
+                    _EngineCard(
+                      icon: Icons.auto_awesome_rounded,
+                      title: 'GPT-Live',
+                      subtitle: context.tr(
+                        modes.liveAvailable
+                            ? '实时双向语音，可随时打断，复杂请求交给 Hermes 处理'
+                            : modes.supported
+                            ? '当前档案的 GPT-Live 不可用'
+                            : '网关未提供此语音功能',
+                      ),
+                      badge: context.tr('默认'),
+                      selected: live,
+                      onTap: saving || !modes.liveAvailable
+                          ? null
+                          : () => select(true),
+                    ),
+                    const SizedBox(height: 10),
+                    _EngineCard(
+                      icon: Icons.graphic_eq_rounded,
+                      title: context.tr('语音转文字'),
+                      subtitle: context.tr('说完一句后转写发送，回复再朗读出来'),
+                      selected: !live,
+                      onTap: saving ? null : () => select(false),
+                    ),
+                  ],
+                  if (saving)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (error case final message?)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 10, 6, 0),
+                      child: Text(
+                        context.tr(message),
+                        style: TextStyle(color: colors.error),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _engineTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String? subtitle,
-    required bool selected,
-    required VoidCallback? onTap,
-  }) => ListTile(
-    enabled: onTap != null,
-    selected: selected,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    leading: Icon(icon),
-    title: Text(title),
-    subtitle: subtitle == null ? null : Text(subtitle),
-    trailing: selected ? const Icon(Icons.check_rounded, size: 19) : null,
-    onTap: onTap,
-  );
+class _EngineCard extends StatelessWidget {
+  const _EngineCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title, subtitle;
+  final String? badge;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Opacity(
+      opacity: onTap == null && !selected ? .45 : 1,
+      child: Material(
+        color: selected
+            ? colors.primary.withValues(alpha: .1)
+            : colors.onSurface.withValues(alpha: .04),
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? colors.primary
+                        : colors.onSurface.withValues(alpha: .07),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 21,
+                    color: selected ? colors.onPrimary : colors.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            title,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (badge case final label?) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.primary.withValues(alpha: .12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  selected
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 22,
+                  color: selected ? colors.primary : colors.outline,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -20,6 +20,7 @@ extension MobileVoiceConversation on MobileVoice {
     required List<Json> Function() liveHistory,
     required VoidCallback unavailable,
     required ValueChanged<String> onNotice,
+    bool preferLive = false,
   }) async {
     if (_job != null || _disposed) return;
     final job = _begin(VoicePhase.opening);
@@ -32,25 +33,30 @@ extension MobileVoiceConversation on MobileVoice {
         ).catchError((Object _) => const VoiceEngineStatus()),
       );
       if (engine == null || job.cancelled.isCompleted) return;
-      if (engine.liveSelected) {
-        if (engine.liveAvailable &&
-            await _runLive(
-              call,
-              liveHistory(),
-              submit,
-              interrupt,
-              spokenText,
-              delegationFailure,
-            )) {
+      // GPT-Live is the default engine: used whenever the gateway can run it,
+      // unless the user explicitly chose speech-to-text.
+      if (engine.liveAvailable && (engine.liveSelected || preferLive)) {
+        call.live = true;
+        if (await _runLive(
+          call,
+          liveHistory(),
+          submit,
+          interrupt,
+          spokenText,
+          delegationFailure,
+        )) {
           return;
         }
-        if (job.cancelled.isCompleted) return;
-        unavailable();
+        call.live = false;
       }
+      if (job.cancelled.isCompleted) return;
+      // Only an explicit GPT-Live choice is worth a notice when it falls back.
+      if (engine.liveSelected) unavailable();
       var transcript = await _listen(call, job, onNotice);
       var interrupted = false;
       while (transcript != null && !job.cancelled.isCompleted) {
         if (_endsCall(transcript)) return;
+        _transcribed(user: true, text: transcript);
         _setPhase(VoicePhase.waiting);
         final response = submit(transcript, interrupted, null);
         final duringReply = call.interruptInput = _VoiceJob();
@@ -80,6 +86,7 @@ extension MobileVoiceConversation on MobileVoice {
         await followup;
         if (first.reply == null) return;
         final reply = spokenText(first.reply!);
+        if (reply.isNotEmpty) _transcribed(user: false, text: reply);
         if (call.speaker && reply.isNotEmpty && !job.cancelled.isCompleted) {
           final playback = call.playback = _VoiceJob();
           try {
@@ -188,6 +195,7 @@ extension MobileVoiceConversation on MobileVoice {
       final detector = _UtteranceDetector();
       frames = audio.listen(
         (chunk) {
+          level.value = _pcmLevel(chunk);
           if (!capture.done.isCompleted && detector.add(chunk)) {
             capture.stop(true);
           }
@@ -208,6 +216,7 @@ extension MobileVoiceConversation on MobileVoice {
       return null;
     } finally {
       capture.stop(false);
+      level.value = 0;
       try {
         await frames?.cancel();
         await states?.cancel();
@@ -256,6 +265,9 @@ class _VoiceCall {
   _VoiceCall(this.job);
   final _VoiceJob job;
   bool micGranted = false;
+
+  /// The call runs on GPT-Live rather than speech-to-text.
+  bool live = false;
   bool speaker = true;
   int muteRevision = 0;
   Completer<void>? unmute;

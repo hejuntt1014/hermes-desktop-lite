@@ -82,6 +82,19 @@ extension _ChatChrome on _ChatPageState {
                 ),
               ),
             ),
+            // A voice call floats as a bubble over the chat, which stays in
+            // view; it starts just above the composer dock.
+            Positioned.fill(
+              child: ListenableBuilder(
+                listenable: Listenable.merge([voice, dockHeight]),
+                builder: (context, _) => voice.inCall
+                    ? VoiceCallBubble(
+                        voice: voice,
+                        bottomInset: dockHeight.value,
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ],
         ),
       ),
@@ -95,33 +108,60 @@ extension _ChatChrome on _ChatPageState {
   }) {
     final canvas =
         CustomThemeTokens.read(context, ThemeColor.canvas) ?? colors.surface;
-    return DecoratedBox(
-      // A short fade keeps text from colliding with the glass edge.
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [canvas.withValues(alpha: 0), canvas.withValues(alpha: .9)],
-          stops: const [0, .55],
+    // Solid from the composer's middle to the screen edge, measured in pixels
+    // so the system inset cannot skew it, so no text shows below the
+    // composer; above that a short fade keeps text off the glass edge.
+    final solid = MediaQuery.paddingOf(context).bottom + 34;
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: solid,
+          child: ColoredBox(color: canvas),
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 720, maxHeight: maxHeight),
-            child: SingleChildScrollView(
-              primary: false,
-              reverse: true,
-              padding: const EdgeInsets.only(top: 14),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (busy) const _DockProgress(),
-                  ...dockNotices(colors),
-                  buildComposer(compact: compact, colors: colors),
-                ],
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: solid,
+          height: 70,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [canvas.withValues(alpha: 0), canvas],
               ),
+            ),
+          ),
+        ),
+        dockContent(compact: compact, colors: colors, maxHeight: maxHeight),
+      ],
+    );
+  }
+
+  Widget dockContent({
+    required bool compact,
+    required ColorScheme colors,
+    required double maxHeight,
+  }) {
+    return SafeArea(
+      top: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 720, maxHeight: maxHeight),
+          child: SingleChildScrollView(
+            primary: false,
+            reverse: true,
+            padding: const EdgeInsets.only(top: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy) const _DockProgress(),
+                ...dockNotices(colors),
+                buildComposer(compact: compact, colors: colors),
+              ],
             ),
           ),
         ),
@@ -298,18 +338,15 @@ extension _ChatChrome on _ChatPageState {
                             ),
                           ),
                         ),
-                        if (manage != null)
-                          Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 16,
-                            color: colors.onSurfaceVariant,
-                          ),
                       ],
                     ),
                     if (!compact)
                       Row(
                         children: [
-                          Flexible(
+                          // Capped rather than flexible, so the context meter gets
+                          // all the remaining width instead of half of it.
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 96),
                             child: Text(
                               widget.profileLabel ??
                                   context.strings.profileName(widget.profile),
@@ -386,12 +423,34 @@ extension _ChatChrome on _ChatPageState {
   /// keyboard is up or once it holds a draft, then folds away again.
   Widget buildComposer({required bool compact, required ColorScheme colors}) {
     return ListenableBuilder(
-      listenable: Listenable.merge([draftFocus, draft, uploadProgress]),
+      listenable: Listenable.merge([draftFocus, draft, uploadProgress, voice]),
       builder: (context, _) {
         final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
+        // Android's back key hides the keyboard but keeps focus; an empty
+        // composer should fold back then, so drop focus with the keyboard.
+        if (keyboardWasUp &&
+            !keyboard &&
+            draftFocus.hasFocus &&
+            draft.text.isEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && MediaQuery.viewInsetsOf(context).bottom == 0) {
+              draftFocus.unfocus();
+            }
+          });
+        }
+        keyboardWasUp = keyboard;
+        // Dictating swaps the input row for a recording bar in place.
+        final dictating =
+            !voice.inCall &&
+            switch (voice.phase) {
+              VoicePhase.opening ||
+              VoicePhase.recording ||
+              VoicePhase.transcribing => true,
+              _ => false,
+            };
         final expanded =
             compact ||
-            draftFocus.hasFocus && keyboard ||
+            draftFocus.hasFocus ||
             draft.text.isNotEmpty ||
             files.isNotEmpty ||
             pictures.isNotEmpty ||
@@ -448,32 +507,35 @@ extension _ChatChrome on _ChatPageState {
                     ),
                   if (files.isNotEmpty) buildComposerFiles(),
                   if (pictures.isNotEmpty) buildComposerPictures(),
-                  Row(
-                    key: const ValueKey('composer-input'),
-                    crossAxisAlignment: expanded
-                        ? CrossAxisAlignment.center
-                        : CrossAxisAlignment.end,
-                    // Side slots swap instantly: a cross-fade keeps the old
-                    // buttons' size during the fade and makes the text jump.
-                    // The key keeps the field (and its focus) across the swap.
-                    children: [
-                      if (expanded)
-                        const SizedBox(width: 12)
-                      else
-                        attachButton(),
-                      Expanded(
-                        key: const ValueKey('composer-field'),
-                        child: buildDraftField(expanded, compact),
-                      ),
-                      if (expanded)
-                        const SizedBox(width: 12)
-                      else ...[
-                        if (!readOnly) voiceButtons(colors),
-                        if (running) stopButton(colors),
+                  if (dictating)
+                    DictationBar(key: const ValueKey('dictation'), voice: voice)
+                  else
+                    Row(
+                      key: const ValueKey('composer-input'),
+                      crossAxisAlignment: expanded
+                          ? CrossAxisAlignment.center
+                          : CrossAxisAlignment.end,
+                      // Side slots swap instantly: a cross-fade keeps the old
+                      // buttons' size during the fade and makes the text jump.
+                      // The key keeps the field (and its focus) across the swap.
+                      children: [
+                        if (expanded)
+                          const SizedBox(width: 12)
+                        else
+                          attachButton(),
+                        Expanded(
+                          key: const ValueKey('composer-field'),
+                          child: buildDraftField(expanded, compact),
+                        ),
+                        if (expanded)
+                          const SizedBox(width: 12)
+                        else ...[
+                          if (!readOnly) voiceButtons(colors),
+                          if (running) stopButton(colors),
+                        ],
                       ],
-                    ],
-                  ),
-                  if (expanded)
+                    ),
+                  if (expanded && !dictating)
                     Row(
                       children: [
                         attachButton(),
