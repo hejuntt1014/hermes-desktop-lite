@@ -18,6 +18,7 @@ import 'mobile_notifications.dart';
 import 'mobile_locale.dart';
 import 'mobile_shortcuts.dart';
 import 'split_pane.dart';
+import 'ui_kit.dart';
 
 part 'appearance_page.dart';
 part 'chat_display_settings.dart';
@@ -690,137 +691,138 @@ class MobileSettingsPage extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 650),
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
                   children: [
-                    Text(
-                      context.tr('常规'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    LanguageMenu(preferences: prefs),
-                    ListenableBuilder(
-                      listenable: prefs,
-                      builder: (context, _) => SwitchListTile(
-                        secondary: Icon(
-                          Icons.restore_rounded,
-                          color: colors.onSurfaceVariant,
-                          size: 21,
-                        ),
-                        title: Text(context.tr('启动时恢复上次会话')),
-                        subtitle: Text(context.tr('关闭后，启动时进入一个空白草稿。')),
-                        value: prefs.restoreSession,
-                        onChanged: (restore) async {
-                          try {
-                            await prefs.setRestoreSession(restore);
-                          } catch (_) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(context.tr('无法保存启动设置'))),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                    ListTile(
-                      leading: Icon(
-                        Icons.keyboard_outlined,
-                        color: colors.onSurfaceVariant,
-                        size: 21,
-                      ),
-                      title: Text(context.tr('键盘快捷键')),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => const KeyboardShortcutsPage(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      context.tr('外观'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 10),
-                    ListenableBuilder(
-                      listenable: prefs,
-                      builder: (context, _) => ListTile(
-                        leading: Icon(
-                          Icons.palette_outlined,
-                          color: colors.onSurfaceVariant,
-                          size: 21,
-                        ),
-                        title: Text(context.tr('主题与背景')),
-                        subtitle: Text(
-                          '${prefs.customTheme?.name ?? context.tr(prefs.palette.label)} · ${context.tr(labels[prefs.effectiveMode]!)}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => Navigator.of(context).push<void>(
-                          MaterialPageRoute(
-                            builder: (_) => AppearancePage(appearance: prefs),
+                    SettingsGroup(
+                      title: context.tr('常规'),
+                      children: [
+                        LanguageMenu(preferences: prefs),
+                        ListenableBuilder(
+                          listenable: prefs,
+                          builder: (context, _) => SwitchListTile(
+                            secondary: Icon(
+                              Icons.restore_rounded,
+                              color: colors.onSurfaceVariant,
+                              size: 21,
+                            ),
+                            title: Text(context.tr('启动时恢复上次会话')),
+                            subtitle: Text(context.tr('关闭后，启动时进入一个空白草稿。')),
+                            value: prefs.restoreSession,
+                            onChanged: (restore) async {
+                              try {
+                                await prefs.setRestoreSession(restore);
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(context.tr('无法保存启动设置')),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                           ),
                         ),
-                      ),
-                    ),
-                    ListTile(
-                      leading: Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        color: colors.onSurfaceVariant,
-                        size: 21,
-                      ),
-                      title: Text(context.tr('聊天显示')),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => _ChatDisplayPage(appearance: prefs),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      context.tr('通知'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    NotificationSettings(previewTarget: notificationTarget),
-                    const SizedBox(height: 24),
-                    Text(
-                      context.tr('网关连接'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    ListTile(
-                      leading: Icon(
-                        Icons.monitor_heart_outlined,
-                        color: colors.onSurfaceVariant,
-                        size: 21,
-                      ),
-                      title: Text(context.tr('网关状态')),
-                      subtitle: StreamBuilder<Json>(
-                        stream: gateway.events.where(
-                          (e) => e['type'] == 'client.connection',
-                        ),
-                        builder: (context, _) => Text(
-                          [
-                            context.tr(gatewayLinkLabel(gateway.link)),
-                            gateway.base.toString(),
-                          ].join(' · '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => GatewayStatusPage(
-                            gateway: gateway,
-                            profile: profile,
-                            onSelectGateway: onGateway,
+                        ListTile(
+                          leading: Icon(
+                            Icons.keyboard_outlined,
+                            color: colors.onSurfaceVariant,
+                            size: 21,
+                          ),
+                          title: Text(context.tr('键盘快捷键')),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => const KeyboardShortcutsPage(),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    _AttachmentTransportTile(preferences: prefs),
+                    SettingsGroup(
+                      title: context.tr('外观'),
+                      children: [
+                        ListenableBuilder(
+                          listenable: prefs,
+                          builder: (context, _) => ListTile(
+                            leading: Icon(
+                              Icons.palette_outlined,
+                              color: colors.onSurfaceVariant,
+                              size: 21,
+                            ),
+                            title: Text(context.tr('主题与背景')),
+                            subtitle: Text(
+                              '${prefs.customTheme?.name ?? context.tr(prefs.palette.label)} · ${context.tr(labels[prefs.effectiveMode]!)}',
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () => Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    AppearancePage(appearance: prefs),
+                              ),
+                            ),
+                          ),
+                        ),
+                        ListTile(
+                          leading: Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            color: colors.onSurfaceVariant,
+                            size: 21,
+                          ),
+                          title: Text(context.tr('聊天显示')),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  _ChatDisplayPage(appearance: prefs),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SettingsGroup(
+                      title: context.tr('通知'),
+                      children: [
+                        NotificationSettings(previewTarget: notificationTarget),
+                      ],
+                    ),
+                    SettingsGroup(
+                      title: context.tr('网关连接'),
+                      children: [
+                        ListTile(
+                          leading: Icon(
+                            Icons.monitor_heart_outlined,
+                            color: colors.onSurfaceVariant,
+                            size: 21,
+                          ),
+                          title: Text(context.tr('网关状态')),
+                          subtitle: StreamBuilder<Json>(
+                            stream: gateway.events.where(
+                              (e) => e['type'] == 'client.connection',
+                            ),
+                            builder: (context, _) => Text(
+                              [
+                                context.tr(gatewayLinkLabel(gateway.link)),
+                                gateway.base.toString(),
+                              ].join(' · '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.of(context).push<void>(
+                            MaterialPageRoute(
+                              builder: (_) => GatewayStatusPage(
+                                gateway: gateway,
+                                profile: profile,
+                                onSelectGateway: onGateway,
+                              ),
+                            ),
+                          ),
+                        ),
+                        _AttachmentTransportTile(preferences: prefs),
+                      ],
+                    ),
                   ],
                 ),
               ),

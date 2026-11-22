@@ -1118,4 +1118,10 @@ const _english = <String, String>{
   '空白会话，开始输入吧': 'Empty conversation — start typing',
   '暂无预览': 'No preview yet',
   '当前': 'Current',
+  '早上好': 'Good morning',
+  '中午好': 'Good afternoon',
+  '下午好': 'Good afternoon',
+  '晚上好': 'Good evening',
+  '今天想让 Hermes 做什么？': 'What should Hermes do today?',
+  '进行中': 'Active',
 };

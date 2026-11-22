@@ -155,6 +155,33 @@ ThemeData liteTheme(
         shape: const StadiumBorder(),
       ),
     ),
+    listTileTheme: ListTileThemeData(
+      iconColor: scheme.onSurfaceVariant,
+      selectedColor: scheme.onSurface,
+      subtitleTextStyle: TextStyle(
+        fontFamily: interfaceFont,
+        fontSize: 13,
+        color: scheme.onSurfaceVariant,
+      ),
+    ),
+    dividerTheme: DividerThemeData(color: scheme.outlineVariant, space: 1),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.surface
+            : scheme.outline,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? scheme.primary
+            : scheme.surfaceContainerHigh,
+      ),
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.transparent
+            : scheme.outlineVariant,
+      ),
+    ),
     popupMenuTheme: PopupMenuThemeData(
       color: scheme.surfaceContainerLow,
       surfaceTintColor: Colors.transparent,

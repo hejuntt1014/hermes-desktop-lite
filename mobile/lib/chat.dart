@@ -91,6 +91,7 @@ part 'chat_models.dart';
 part 'chat_status.dart';
 part 'chat_composer.dart';
 part 'chat_chrome.dart';
+part 'chat_start.dart';
 part 'chat_voice.dart';
 part 'chat_clipboard.dart';
 part 'chat_history_addresses.dart';

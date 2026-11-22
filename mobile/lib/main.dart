@@ -16,6 +16,7 @@ import 'chat_tabs.dart';
 import 'composer_attachments.dart';
 import 'chat_tab_strip.dart';
 import 'tab_switcher.dart';
+import 'ui_kit.dart';
 import 'chat_tab_viewport.dart';
 import 'gateway.dart';
 import 'profiles.dart';
@@ -2726,11 +2727,6 @@ class _SessionsPageState extends State<SessionsPage> {
   }) {
     final c = Theme.of(context).colorScheme;
     final (:pins, :sessions) = libraryRows;
-    final archiveTitle = context.tr(archived ? '返回会话' : '已归档');
-    final archiveIcon = archived
-        ? Icons.arrow_back_rounded
-        : Icons.archive_outlined;
-
     final showCron =
         profile.isNotEmpty && MediaQuery.viewInsetsOf(context).bottom == 0;
     final schedule = showCron
@@ -2757,221 +2753,186 @@ class _SessionsPageState extends State<SessionsPage> {
           children: [
             if (!short)
               Padding(
-                padding: const EdgeInsets.fromLTRB(21, 12, 12, 6),
+                padding: const EdgeInsets.fromLTRB(12, 8, 6, 2),
                 child: Row(
                   children: [
-                    const BrandMark(),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        'Hermes Lite',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 18,
-                          letterSpacing: -.55,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    PopupMenuButton<Object>(
-                      tooltip: context.tr('切换配置档案'),
-                      onSelected: (value) {
-                        switch (value) {
-                          case _ProfileMenuAction.manage:
-                            manageProfiles();
-                          case _ProfileMenuAction.refresh:
-                            load(refreshProfiles: true, retain: true);
-                          case String p when p != profile:
-                            selectTab(
-                              tabs.preferredOpen(p) ?? tabs.activate(p, null),
-                              closeDrawer: false,
-                            );
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        for (final p in profiles.values)
-                          CheckedPopupMenuItem(
-                            value: p.name,
-                            checked: p.name == profile,
-                            child: Text(profileLabel(p.name)),
+                    Flexible(
+                      child: PopupMenuButton<Object>(
+                        tooltip: context.tr('切换配置档案'),
+                        position: PopupMenuPosition.under,
+                        onSelected: (value) {
+                          switch (value) {
+                            case _ProfileMenuAction.manage:
+                              manageProfiles();
+                            case _ProfileMenuAction.refresh:
+                              load(refreshProfiles: true, retain: true);
+                            case String p when p != profile:
+                              selectTab(
+                                tabs.preferredOpen(p) ?? tabs.activate(p, null),
+                                closeDrawer: false,
+                              );
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          for (final p in profiles.values)
+                            CheckedPopupMenuItem(
+                              value: p.name,
+                              checked: p.name == profile,
+                              child: Text(profileLabel(p.name)),
+                            ),
+                          const PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: _ProfileMenuAction.manage,
+                            child: Text(context.tr('管理档案')),
                           ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: _ProfileMenuAction.manage,
-                          child: Text(context.tr('管理档案')),
-                        ),
-                        PopupMenuItem(
-                          value: _ProfileMenuAction.refresh,
-                          child: Text(context.tr('刷新配置档案列表')),
-                        ),
-                      ],
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: c.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.layers_outlined,
-                              size: 16,
-                              color: c.primary,
-                            ),
-                            const SizedBox(width: 5),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 88),
-                              child: Text(
-                                profile.isEmpty
-                                    ? context.tr('档案')
-                                    : profileLabel(profile),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 13),
+                          PopupMenuItem(
+                            value: _ProfileMenuAction.refresh,
+                            child: Text(context.tr('刷新配置档案列表')),
+                          ),
+                        ],
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const BrandMark(size: 34),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      'Hermes Lite',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: c.onSurfaceVariant,
+                                        letterSpacing: .2,
+                                      ),
+                                    ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            profile.isEmpty
+                                                ? context.tr('档案')
+                                                : profileLabel(profile),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: -.3,
+                                            ),
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.unfold_more_rounded,
+                                          size: 17,
+                                          color: c.onSurfaceVariant,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Icon(
-                              Icons.expand_more,
-                              size: 16,
-                              color: c.onSurfaceVariant,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            if (!short)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        context.tr(archived ? '已归档' : '会话'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: narrow ? 23 : 28,
-                          height: 1.2,
-                        ),
-                      ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: context.tr('设置'),
+                      onPressed: openSettings,
+                      icon: const Icon(Icons.settings_outlined, size: 21),
                     ),
-                    if (narrow)
-                      IconButton.filled(
-                        tooltip: context.tr('新建会话'),
-                        onPressed: profile.isEmpty ? null : () => open(),
-                        icon: const Icon(Icons.add, size: 20),
-                      )
-                    else
-                      FilledButton.icon(
-                        onPressed: profile.isEmpty ? null : () => open(),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(44, 42),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                        ),
-                        icon: const Icon(Icons.add, size: 17),
-                        label: Text(
-                          context.tr('新建会话'),
-                          style: TextStyle(fontSize: 13),
-                        ),
-                      ),
                   ],
                 ),
               ),
             Padding(
               key: const ValueKey('conversation-search'),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: TextField(
-                controller: search,
-                onChanged: filter,
-                decoration: InputDecoration(
-                  hintText: context.tr('搜索当前档案的会话'),
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: search.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: context.tr('清空搜索'),
-                          onPressed: () {
-                            search.clear();
-                            filter('');
-                          },
-                          icon: const Icon(Icons.close, size: 16),
-                        ),
-                ),
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: search,
+                      onChanged: filter,
+                      decoration: InputDecoration(
+                        hintText: context.tr('搜索当前档案的会话'),
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: search.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: context.tr('清空搜索'),
+                                onPressed: () {
+                                  search.clear();
+                                  filter('');
+                                },
+                                icon: const Icon(Icons.close, size: 16),
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: context.tr('新建会话'),
+                    onPressed: profile.isEmpty ? null : () => open(),
+                    style: IconButton.styleFrom(
+                      backgroundColor: c.onSurface,
+                      foregroundColor: c.surface,
+                      minimumSize: const Size(46, 46),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    icon: const Icon(Icons.edit_square, size: 20),
+                  ),
+                ],
               ),
             ),
             if (!short)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 4,
-                ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    IconButton(
-                      tooltip: context.tr('消息书签'),
-                      icon: Icon(
-                        Icons.bookmarks_outlined,
-                        size: 18,
-                        color: c.onSurfaceVariant,
+                    for (final chip in [
+                      if (!archived) ...[
+                        PillChip(
+                          icon: Icons.mark_chat_unread_outlined,
+                          label: context.tr('未读'),
+                          onTap:
+                              sessionMetadata[profile]?.unreadRows.value == null
+                              ? null
+                              : openUnreadConversations,
+                        ),
+                        PillChip(
+                          icon: Icons.bolt_outlined,
+                          label: context.tr('进行中'),
+                          onTap: profile.isEmpty
+                              ? null
+                              : openActiveConversations,
+                        ),
+                      ],
+                      PillChip(
+                        icon: Icons.bookmarks_outlined,
+                        label: context.tr('书签'),
+                        onTap: openBookmarks,
                       ),
-                      onPressed: openBookmarks,
-                    ),
-                    if (!archived)
-                      IconButton(
-                        tooltip: context.tr('未读会话'),
-                        icon: Icon(
-                          Icons.mark_chat_unread_outlined,
-                          size: 19,
-                          color: c.onSurfaceVariant,
-                        ),
-                        onPressed:
-                            sessionMetadata[profile]?.unreadRows.value == null
-                            ? null
-                            : openUnreadConversations,
+                      PillChip(
+                        icon: Icons.archive_outlined,
+                        label: context.tr('已归档'),
+                        selected: archived,
+                        onTap: mutating ? null : toggleArchive,
                       ),
-                    if (!archived)
-                      IconButton(
-                        tooltip: context.tr('进行中的会话'),
-                        icon: Icon(
-                          Icons.bolt_outlined,
-                          size: 19,
-                          color: c.onSurfaceVariant,
-                        ),
-                        onPressed: profile.isEmpty
-                            ? null
-                            : openActiveConversations,
-                      ),
-                    const Spacer(),
-                    if (narrow)
-                      IconButton(
-                        tooltip: archiveTitle,
-                        onPressed: mutating ? null : toggleArchive,
-                        icon: Icon(archiveIcon, size: 19),
-                        color: c.onSurfaceVariant,
-                      )
-                    else
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: c.onSurfaceVariant,
-                        ),
-                        onPressed: mutating ? null : toggleArchive,
-                        icon: Icon(archiveIcon, size: 16),
-                        label: Text(
-                          archiveTitle,
-                          style: const TextStyle(fontSize: 12),
-                        ),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: chip,
                       ),
                   ],
                 ),
@@ -3051,42 +3012,43 @@ class _SessionsPageState extends State<SessionsPage> {
               SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Tooltip(
-                          message: context.tr('切换网关'),
-                          excludeFromSemantics: true,
-                          child: TextButton.icon(
-                            onPressed: widget.onSwitchGateway == null
-                                ? null
-                                : () {
-                                    shell.currentState?.closeDrawer();
-                                    widget.onSwitchGateway?.call();
-                                  },
-                            style: TextButton.styleFrom(
-                              foregroundColor: c.onSurfaceVariant,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                            ),
-                            icon: const Icon(Icons.dns_outlined, size: 18),
-                            label: Text(
-                              context.tr('切换网关'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                  padding: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+                  child: Tooltip(
+                    message: context.tr('切换网关'),
+                    excludeFromSemantics: true,
+                    child: ListTile(
+                      dense: true,
+                      minTileHeight: 46,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      leading: Icon(
+                        Icons.dns_outlined,
+                        size: 19,
+                        color: c.onSurfaceVariant,
+                      ),
+                      minLeadingWidth: 20,
+                      title: Text(
+                        widget.gateway.base.host,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: c.onSurfaceVariant,
                         ),
                       ),
-                      IconButton(
-                        tooltip: context.tr('设置'),
-                        onPressed: openSettings,
-                        icon: const Icon(Icons.settings_outlined, size: 20),
+                      trailing: Icon(
+                        Icons.swap_horiz_rounded,
+                        size: 19,
+                        color: c.onSurfaceVariant,
                       ),
-                    ],
+                      onTap: widget.onSwitchGateway == null
+                          ? null
+                          : () {
+                              shell.currentState?.closeDrawer();
+                              widget.onSwitchGateway?.call();
+                            },
+                    ),
                   ),
                 ),
               ),
