@@ -29,6 +29,10 @@ mod clarify;
 mod conversation_files;
 #[path = "desktop_alerts.rs"]
 mod desktop_alerts;
+#[path = "voice_view.rs"]
+mod voice_view;
+#[path = "voice_wake.rs"]
+mod voice_wake;
 #[path = "message_bookmarks.rs"]
 mod message_bookmarks;
 use clarify::Clarify;
@@ -107,6 +111,9 @@ use model_controls::ModelControls;
 #[path = "session_status.rs"]
 mod session_status;
 use session_status::ApprovalStatus;
+#[path = "busy_input.rs"]
+mod busy_input;
+use busy_input::BusyInput;
 #[path = "unread_sessions.rs"]
 mod unread_sessions;
 use unread_sessions::UnreadSessions;
@@ -126,6 +133,7 @@ enum Call {
         draft: String,
         request: String,
         profile: String,
+        draft_upload: bool,
     },
     Replay(String),
     Resume {
@@ -134,8 +142,12 @@ enum Call {
         paged: bool,
     },
     RunningReplay(String, u64),
-    AttachFile(String, Prepared),
+    CheckTurn { key: String, runtime: String, seq: u64 },
+    PeerPrompt { key: String, runtime: String, sequence: u64 },
+    CheckReplay { key: String, runtime: String, seq: u64 },
+    AttachFile(String, attachment_ops::AttachmentJob, Option<crate::file_upload::StagedFile>, crate::upload_progress::Cancel),
     Submit(String, Prepared),
+    CorrectTurn(String, Prepared),
     Stop(String),
     Answer(String, String),
     Resolve(String, String),
@@ -148,6 +160,9 @@ enum Call {
     ApprovalMode(String, bool),
     ContextUsage(String, u64, u64),
     GatewayInference,
+    VoiceWake(voice_wake::Request),
+    WakeFeed(tokio::sync::oneshot::Sender<bool>),
+    SetVoiceEngine(String, crate::voice::VoiceEngine),
     Rewrite(String, String),
     SlashSuggestions(Lookup),
     CatalogSlash(slash_menu::Scope, String),
@@ -171,6 +186,8 @@ enum TabClose {
 }
 
 pub struct Desktop {
+    voice: voice_view::Voice,
+    voice_wake: voice_wake::Wake,
     window_handle: gpui::AnyWindowHandle,
     runtime: Handle,
     settings: Settings,
@@ -206,6 +223,7 @@ pub struct Desktop {
     reasoning_config_revision: u64,
     model_controls: ModelControls,
     approval_status: ApprovalStatus,
+    busy_input: BusyInput,
     media: MediaView,
     transcript_find: TranscriptFind,
     palette: Palette,
@@ -238,6 +256,7 @@ pub struct Desktop {
     maximized_drag: Option<Point<Pixels>>,
     session_dialog: Option<session_dialog::SessionDialog>,
     list: ListState,
+    transcript_scrollbar: timeline::TranscriptScrollbar,
     tab_scroll: ScrollHandle,
     dragged_tab: Option<(String, gpui::Pixels)>,
     workspace_focus: FocusHandle,
@@ -353,6 +372,7 @@ impl Desktop {
             }),
         ];
         let background_view = BackgroundView::new(&mut settings.display, window, cx);
+        let list = ListState::new(0, ListAlignment::Top, px(260.));
         let mut this = Self {
             window_handle: window.window_handle(),
             runtime,
@@ -379,6 +399,8 @@ impl Desktop {
             banner,
             gateway: None,
             connection: None,
+            voice: Default::default(),
+            voice_wake: Default::default(),
             out: None,
             canonical: false,
             clarify_batch: false,
@@ -409,6 +431,7 @@ impl Desktop {
             reasoning_config_revision: 0,
             model_controls: ModelControls::new(model_search),
             approval_status: ApprovalStatus::default(),
+            busy_input: BusyInput::default(),
             media: MediaView::default(),
             transcript_find: TranscriptFind::new(transcript_search),
             palette: Palette::new(palette_input),
@@ -421,7 +444,8 @@ impl Desktop {
             rewrite_editor: None,
             queue_editor: None,
             session_dialog: None,
-            list: ListState::new(0, ListAlignment::Top, px(260.)),
+            list: list.clone(),
+            transcript_scrollbar: timeline::TranscriptScrollbar::new(list),
             tab_scroll: ScrollHandle::new(),
             dragged_tab: None,
             workspace_focus,
@@ -458,6 +482,8 @@ impl Desktop {
                 if !window.is_window_active() {
                     this.maximized_drag = None;
                     this.finish_pane_resize(cx);
+                } else {
+                    this.check_open_transcript(true, cx);
                 }
             }));
         let weak = cx.entity().downgrade();
@@ -510,6 +536,7 @@ impl Desktop {
             self.settings.display.reasoning == crate::settings::ReasoningVisibility::Hidden;
         self.model_controls.reset();
         self.approval_status = ApprovalStatus::default();
+        self.busy_input = BusyInput::default();
         self.close_image(window, cx);
         self.close_files(window, cx);
         self.close_review(window, cx);
@@ -545,6 +572,8 @@ impl Desktop {
     }
 
     fn restart(&mut self, gateway: Gateway, window: &mut Window, cx: &mut Context<Self>) {
+        self.reset_voice_connection();
+        self.voice_wake = Default::default();
         self.login_url = None;
         let mut connection = gateway.start(&self.runtime);
         self.gateway = Some(gateway);
@@ -561,6 +590,7 @@ impl Desktop {
                 }
                 if view.update_in(cx, |this, window, cx| {
                     for update in batch { this.apply_update(update, window, cx); }
+                    this.check_voice(window, cx);
                     this.sync_prompt_alerts(window,cx);
                     this.sync_list();
                     cx.notify();
@@ -682,6 +712,7 @@ impl Desktop {
     }
 
     fn reset_scroll(&mut self) {
+        self.transcript_scrollbar.reset();
         self.pending_bookmark = None;
         self.list.reset(0);
         self.visible_count = 0;
@@ -706,6 +737,12 @@ impl Desktop {
     }
 
     fn sync_list_at(&mut self, prepended_rows: Option<usize>, position: Option<ReadingPosition>) {
+        if self.transcript_scrollbar.dragging() || self.transcript_scrollbar.has_navigation() {
+            self.cancel_search_reveal();
+            self.following = false;
+            self.pending_reading = None;
+            self.pending_bookmark = None;
+        }
         let mut preserved = false;
         let session = self
             .selected
@@ -759,6 +796,7 @@ impl Desktop {
     }
 
     fn select_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.voice.stop_on_tab_change(id);
         self.close_queue_editor(window, cx);
         self.close_rewrite(window, cx);
         self.close_files(window, cx);
@@ -814,6 +852,7 @@ impl Desktop {
                 .update(cx, |field, cx| field.focus(window, cx));
         }
         if !unchanged {
+            self.check_open_transcript(true, cx);
             self.refresh_selection_status(cx);
             self.poll_work();
         }
@@ -1156,7 +1195,7 @@ impl Desktop {
         &mut self,
         method: &str,
         params: Value,
-        attachment: Option<tokio::fs::File>,
+        attachment: Option<crate::file_upload::Attachment>,
         action: Call,
     ) -> bool {
         let Some(out) = &self.out else { return false };
@@ -1217,17 +1256,8 @@ impl Desktop {
                 .map(|tab| tab.profile.clone())
         });
         let session = self.sessions.entry(key.to_owned()).or_default();
-        let mut params = json!({"session_id":key});
         let paged = !session.history_rest_unavailable;
-        if paged {
-            params["defer_history"] = json!(true);
-            params["omit_messages"] = json!(true);
-        }
-        if self.canonical {
-            params["display_projection"] = json!(true);
-        } else {
-            params["source"] = json!("desktop");
-        }
+        let mut params = hermes_client_core::resume(self.canonical, key, paged);
         if let Some(summary) = self
             .rows
             .iter()
@@ -1312,18 +1342,24 @@ impl Desktop {
                 }
             }
             Update::Offline { reason, retry } => {
+                self.voice_socket_offline(retry, cx);
+                self.voice_wake = Default::default();
                 self.login_url = None;
                 self.gateway_version = None;
                 self.model_controls.picker = None;
                 self.status = if retry { "正在重连" } else { "未连接" };
                 self.out = None;
                 self.work_monitor = activity::WorkMonitor::default();
+                self.busy_input = BusyInput::default();
                 self.unread_sessions.clear();
                 self.unbound.clear();
                 self.list_job = None;
                 self.refreshing = false;
                 for session in self.sessions.values_mut() {
                     session.activity = Default::default();
+                    session.upload = None;
+                    session.uploading_draft_file = None;
+                    session.waiting_for_draft_upload = false;
                     session.loading = false;
                     session.submitting = false;
                     session.attached = false;
@@ -1337,6 +1373,9 @@ impl Desktop {
                 }
             }
             Update::Frame(frame) => self.frame(frame, window, cx),
+            Update::AttachmentCancelled(id) => {
+                self.pending.remove(&id);
+            }
             Update::Timeout(id) => match self.pending.remove(&id) {
                 Some(Call::ModelOptions(scope, request)) => {
                     self.fallback_model_options(scope, request, cx);
@@ -1417,8 +1456,7 @@ impl Desktop {
                 self.attachment_failed(&key, tr("未收到技能请求确认").into());
             }
             Call::ModelChange(key) => {
-                self.model_controls.busy.remove(&key);
-                self.cancel_model_preset(&key);
+                self.clear_model_setting(&key);
                 self.banner = Some(tr("未收到模型设置确认，可以重试").into());
             }
             Call::ReasoningDisplay(_) => {
@@ -1429,10 +1467,19 @@ impl Desktop {
             Call::ModelOptions(scope, request) => self.cancel_model_options(&scope, request),
             Call::ApprovalMode(profile, write) => self.lose_approval_mode(&profile, write),
             Call::GatewayInference => self.finish_gateway_inference(None),
-            Call::AttachFile(key, _) => {
-                self.attachment_failed(&key, tr("未收到附件上传确认").into());
+            Call::VoiceWake(request) => self.voice_wake_lost(request),
+            Call::WakeFeed(ack) => { let _ = ack.send(false); }
+            Call::SetVoiceEngine(profile, _) => self.voice_engine_lost(&profile),
+            Call::AttachFile(key, job, staged, cancel) => {
+                if cancel.is_cancelled() {
+                    if let (Some(staged), Some(gateway)) = (staged, self.gateway.clone()) {
+                        self.runtime.spawn(staged.remove(gateway));
+                    }
+                } else {
+                    self.lose_attachment(&key, &job, tr("未收到附件上传确认").into());
+                }
             }
-            Call::Submit(key, _) => {
+            Call::Submit(key, _) | Call::CorrectTurn(key, _) => {
                 if let Some(session) = self.sessions.get_mut(&key) {
                     session.submitting = false;
                     session.uncertain = true;
@@ -1485,6 +1532,10 @@ impl Desktop {
             let event = &frame["params"];
             let sid = string(event, "session_id");
             let kind = string(event, "type");
+            if kind == "wake.detected" {
+                self.voice_wake_detected(event, window, cx);
+                return;
+            }
             if kind == "cron.changed"
                 && self.cron_visible()
                 && event["profile"]
@@ -1520,6 +1571,9 @@ impl Desktop {
                     .unwrap_or_else(|| self.active_profile())
                     .to_owned();
                 self.refresh_unread_sessions(profile, cx);
+            }
+            if kind == "sessions.changed" {
+                self.check_open_transcript(true, cx);
             }
             if sid.is_empty() {
                 return;
@@ -1561,11 +1615,25 @@ impl Desktop {
                 return;
             }
             let was_running = session.running;
+            let old_seq = session.seq;
             session.apply(event);
+            let peer_prompt = (!self.canonical && kind == "message.start" && session.seq > old_seq)
+                .then(|| session.missing_prompt_sequence().map(|seq| (session.runtime.clone(), session.profile.clone(), seq)))
+                .flatten();
             let completed = was_running && !session.running && kind == "message.complete";
             let refresh = session.refresh && !session.submitting;
             if refresh {
                 session.refresh = false;
+            }
+            if let Some((runtime, profile, sequence)) = peer_prompt {
+                self.call("session.activate", json!({"session_id": runtime, "profile": profile, "omit_messages": true}),
+                    Call::PeerPrompt { key: key.clone(), runtime, sequence });
+            }
+            if kind == "message.complete" {
+                self.finish_voice_turn(&key, &event["payload"]);
+                if completed {
+                    self.read_voice_reply(&key, &event["payload"], cx);
+                }
             }
             if kind == "message.complete"
                 && self.files.collection.open
@@ -1643,7 +1711,8 @@ impl Desktop {
                 draft,
                 request,
                 profile,
-            } => self.created(draft, request, profile, response, error, window, cx),
+                draft_upload,
+            } => self.created(draft, request, profile, draft_upload, response, error, window, cx),
             Call::Branch {
                 target,
                 through,
@@ -1652,6 +1721,9 @@ impl Desktop {
                 self.finish_branch(target, through, origin_tab, response, error, window, cx);
             }
             Call::ModelChange(key) => self.finish_model_setting(key, response, error, cx),
+            Call::VoiceWake(request) => self.voice_wake_result(request, response, error, cx),
+            Call::WakeFeed(ack) => { let _ = ack.send(error.is_none() && response["fed"] == true); }
+            Call::SetVoiceEngine(profile, engine) => self.voice_engine_saved(&profile, engine, error, cx),
             Call::WorkStatus(request) => self.finish_work(request, response, error),
             Call::WorkRoster(profile) => self.finish_work_roster(&profile, response, error),
             Call::ReasoningDisplay(scope) => {
@@ -1733,8 +1805,20 @@ impl Desktop {
             Call::ReplaceQueued(key, id, submission) => {
                 self.replaced_queued(&key, &id, &submission, response, error, window, cx);
             }
-            Call::AttachFile(key, prepared) => {
-                self.file_attached(key, prepared, response, error, cx);
+            Call::AttachFile(key, job, staged, cancel) => {
+                // The associated attachment is durable once the gateway confirms it copied the file.
+                if let Some(staged) = staged
+                    && (cancel.is_cancelled() || error.is_some() || response["uploaded"] == true && response["path"] != staged.path)
+                    && let Some(gateway) = self.gateway.clone()
+                {
+                    self.runtime.spawn(staged.remove(gateway));
+                }
+                if !cancel.is_cancelled() {
+                    self.file_attached(key, job, response, error, cx);
+                }
+            }
+            Call::CorrectTurn(key, prepared) => {
+                self.finish_busy_text(key, prepared, response, error, window, cx);
             }
             Call::Submit(key, prepared) => {
                 self.submitted(&key, prepared, response, error, window, cx)
@@ -1786,6 +1870,7 @@ impl Desktop {
                 }
                 if error.is_none() {
                     self.drain_followups(&key, cx);
+                    self.start_eager_attachment(&key, cx);
                     self.apply_ready_model_preset(&key, cx);
                     if self.selected.as_deref() == Some(&key) {
                         self.refresh_context_usage(&key);
@@ -1803,6 +1888,46 @@ impl Desktop {
                     self.refresh_review_scope(cx);
                     self.timeline_raw_count = None;
                     self.transcript_changed(cx);
+                }
+            }
+            Call::PeerPrompt { key, runtime, sequence } => {
+                if error.is_none() && response["session_id"] == runtime
+                    && let Some(s) = self.sessions.get_mut(&key)
+                    && s.runtime == runtime && !s.loading
+                {
+                    let inflight = &response["inflight"];
+                    s.supply_turn_prompt(sequence, string(inflight, "user"), inflight);
+                    if self.selected.as_ref() == Some(&key) {
+                        self.transcript_changed(cx);
+                    }
+                }
+            }
+            Call::CheckTurn { key, runtime, seq } => {
+                let Some(session) = self.sessions.get(&key).filter(|s|
+                    s.runtime == runtime && s.seq == seq && !s.loading && !s.submitting
+                        && !s.uncertain && s.error.is_none()
+                ) else { return };
+                let Some(rows) = response["sessions"].as_array().filter(|_| error.is_none()) else { return };
+                let row = rows.iter().find(|row| row["id"] == runtime);
+                if row.is_none_or(|r| r["status"] == "idle")
+                    || row.is_some_and(|r| r["status"] == "waiting" && session.prompts.is_empty())
+                {
+                    self.attach(&key, true);
+                } else if session.running && session.prompts.is_empty() {
+                    let mut params = json!({"session_id": runtime, "profile": session.profile, "last_seen": seq});
+                    if self.canonical {
+                        params["replay_epoch"] = json!(session.epoch);
+                    }
+                    self.call("session.events.since", params, Call::CheckReplay { key, runtime, seq });
+                }
+            }
+            Call::CheckReplay { key, runtime, seq } => {
+                if error.is_none() && self.sessions.get(&key).is_some_and(|s|
+                    s.runtime == runtime && s.seq == seq && !s.loading && !s.submitting
+                ) && (response["snapshot_required"] == true || response["truncated"] == true
+                    || response["events"].as_array().is_some_and(|events| !events.is_empty()))
+                {
+                    self.attach(&key, true);
                 }
             }
             Call::RunningReplay(key, through) => {
@@ -1870,14 +1995,18 @@ impl Desktop {
             && response["running"] == true
             && string(response, "replay_epoch") == session.epoch
             && response["execution_generation"].as_u64() == Some(session.generation);
+        let old_runtime = session.runtime.clone();
         session.replace_snapshot(response, self.canonical, keep);
+        if old_runtime != session.runtime && !old_runtime.is_empty() {
+            self.aliases.remove(&old_runtime);
+        }
         if response["messages_omitted"] != true && response["hydrating"] != true {
             self.history_reads.remove(key);
             session.history_error = None;
         }
         self.media.retry_failed_thumbnails(key);
         if !self.canonical {
-            if session.epoch != self.process_epoch {
+            if session.epoch != self.process_epoch || old_runtime != session.runtime {
                 session.seq = 0;
             }
             session.epoch = self.process_epoch.clone();
@@ -1979,6 +2108,31 @@ impl Desktop {
             return;
         }
         let skill = self.skill_command(&text);
+        if self.voice.is_conversation() && crate::voice::spoken_stop(&text) && files.is_empty() {
+            self.end_voice();
+            self.resume_voice_wake();
+            self.composer.update(cx, |input, cx| input.set_value("", window, cx));
+            cx.notify();
+            return;
+        }
+        if self.voice.is_conversation() {
+            self.end_voice();
+        }
+        self.send_text(text, files, skill, None, window, cx);
+    }
+
+    fn send_text(
+        &mut self,
+        text: String,
+        files: Vec<std::path::PathBuf>,
+        skill: Option<crate::settings::SkillSubmission>,
+        voice: Option<voice_view::Delegation>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.busy_input_saving() {
+            return;
+        }
         let Some(key) = self.selected.clone() else {
             let draft = self.key();
             let profile = self.active_profile().to_owned();
@@ -1997,6 +2151,7 @@ impl Desktop {
                 .and_then(|workspace| workspace.pending_submissions.get(&draft))
                 .map(|prepared| prepared.id.clone())
                 .unwrap_or_else(|| Uuid::new_v4().to_string());
+            self.voice.expect_turn(&draft, &request, voice);
             let legacy = !self.canonical;
             self.workspace_mut().pending_submissions.insert(
                 draft.clone(),
@@ -2015,44 +2170,7 @@ impl Desktop {
                 },
             );
             self.persist(cx);
-            let mut params = if self.canonical {
-                json!({"source":"gui","request_id":request})
-            } else {
-                json!({"source":"desktop","idempotency_key":request})
-            };
-            if !profile.is_empty() {
-                params["profile"] = json!(profile);
-            }
-            if let Some(model) = launch.model {
-                params["model"] = json!(model.id);
-                if !model.provider.is_empty() {
-                    params["provider"] = json!(model.provider);
-                }
-            }
-            if let Some(effort) = launch.effort {
-                params[if self.canonical {
-                    "reasoning"
-                } else {
-                    "reasoning_effort"
-                }] = json!(effort);
-            }
-            if let Some(speed) = launch.speed {
-                if !self.canonical {
-                    params["fast"] = json!(speed != "normal");
-                }
-                if self.canonical || speed == "ultrafast" {
-                    params["service_tier"] = json!(speed);
-                }
-            }
-            self.call(
-                "session.create",
-                params,
-                Call::Create {
-                    draft,
-                    request,
-                    profile,
-                },
-            );
+            self.create_chat(draft, request, profile, launch, false);
             cx.notify();
             return;
         };
@@ -2069,7 +2187,8 @@ impl Desktop {
         {
             return;
         }
-        if self.has_followups(&key) || running && !self.canonical {
+        let force_queue = running && (!files.is_empty() || skill.is_some() || !session.prompts.is_empty() || voice.is_some());
+        if self.has_followups(&key) || force_queue && !self.canonical {
             let followup = Prepared {
                 id: Uuid::new_v4().to_string(),
                 text,
@@ -2090,6 +2209,7 @@ impl Desktop {
             .workspace()
             .and_then(|workspace| workspace.pending_submissions.get(&key))
             .cloned();
+        let fresh_busy_text = running && !force_queue && prior.is_none();
         let prepared = match prior {
             Some(prior)
                 if (prior.staging || !prior.legacy)
@@ -2130,12 +2250,43 @@ impl Desktop {
                 pictures: Default::default(),
                 picture_urls: Default::default(),
                 skill,
-                queued: running,
+                queued: force_queue,
             },
         };
+        if self.canonical && fresh_busy_text {
+            self.send_busy_text(key, prepared, cx);
+            cx.notify();
+            return;
+        }
+        self.voice.expect_turn(&key, &prepared.id, voice);
         self.start_submission(key, prepared, cx);
         self.sync_list();
         cx.notify();
+    }
+
+    fn create_chat(&mut self, draft: String, request: String, profile: String, launch: LaunchOptions, draft_upload: bool) {
+        let mut params = hermes_client_core::create(self.canonical, &request);
+        if !profile.is_empty() {
+            params["profile"] = json!(profile);
+        }
+        if let Some(model) = launch.model {
+            params["model"] = json!(model.id);
+            if !model.provider.is_empty() {
+                params["provider"] = json!(model.provider);
+            }
+        }
+        if let Some(effort) = launch.effort {
+            params[if self.canonical { "reasoning" } else { "reasoning_effort" }] = json!(effort);
+        }
+        if let Some(speed) = launch.speed {
+            if !self.canonical {
+                params["fast"] = json!(speed != "normal");
+            }
+            if self.canonical || speed == "ultrafast" {
+                params["service_tier"] = json!(speed);
+            }
+        }
+        self.call("session.create", params, Call::Create { draft, request, profile, draft_upload });
     }
 
     fn created(
@@ -2143,6 +2294,7 @@ impl Desktop {
         draft: String,
         request: String,
         profile: String,
+        draft_upload: bool,
         response: &Value,
         error: Option<&Value>,
         window: &mut Window,
@@ -2150,6 +2302,7 @@ impl Desktop {
     ) {
         let runtime = string(response, "session_id");
         if error.is_some() || runtime.is_empty() {
+            self.voice.fail_submission(&draft, &request);
             self.banner = Some(
                 error
                     .map_or_else(|| tr("未能创建会话").into(), rpc_error)
@@ -2162,18 +2315,22 @@ impl Desktop {
             .filter(|id| !id.is_empty())
             .unwrap_or(runtime)
             .to_owned();
-        let workspace = self.workspace_mut();
-        if workspace
-            .pending_submissions
-            .get(&draft)
-            .is_none_or(|prepared| prepared.id != request)
-        {
-            return;
-        }
-        let prepared = workspace.pending_submissions.remove(&draft).unwrap();
-        workspace.draft_launch.remove(&draft);
+        let prepared = if draft_upload {
+            if self.draft_key_for_tab(&draft).as_deref() != Some(draft.as_str()) {
+                return;
+            }
+            None
+        } else {
+            let workspace = self.workspace_mut();
+            if workspace.pending_submissions.get(&draft).is_none_or(|prepared| prepared.id != request) {
+                return;
+            }
+            workspace.pending_submissions.remove(&draft)
+        };
+        self.workspace_mut().draft_launch.remove(&draft);
         let mut session = Session::default();
         session.replace_snapshot(response, self.canonical, false);
+        session.awaiting_first_history = true;
         let profile = if profile.is_empty() {
             response["info"]["profile"]
                 .as_str()
@@ -2193,6 +2350,12 @@ impl Desktop {
         self.sessions.insert(key.clone(), session);
         self.end_attach(&key);
         self.aliases.insert(runtime.to_owned(), key.clone());
+        let Some(prepared) = prepared else {
+            self.bind_created_tab(&draft, &key, tr("新会话"), "", window, cx);
+            self.persist(cx);
+            self.start_eager_attachment(&key, cx);
+            return;
+        };
         let title: String = prepared
             .text
             .lines()
@@ -2220,6 +2383,7 @@ impl Desktop {
             launch: LaunchOptions::default(),
             ..prepared
         };
+        self.voice.promote_turn(&draft, &request, &key, &prepared.id);
         self.start_submission(key, prepared, cx);
     }
 
@@ -2263,6 +2427,13 @@ impl Desktop {
         }
         let session = self.sessions.get_mut(&key).unwrap();
         let mut params = json!({"session_id":session.runtime,"text":wire_text});
+        if let Some(context) = self.voice.context_for(&key, &prepared.id) {
+            params["voice_context"] = json!(context);
+            params["surface"] = json!("voice-live");
+        }
+        if self.voice.owns_turn(&key, &prepared.id) && params["voice_context"].is_null() {
+            params["voice_turn"] = json!(true);
+        }
         if !legacy_pictures.is_empty() {
             params["text"] = crate::media::vision_prompt(&wire_text, legacy_pictures);
         } else if self.canonical && !prepared.pictures.is_empty() {
@@ -2387,8 +2558,7 @@ impl Desktop {
         self.accept_draft(key, window, cx);
         let session = self.sessions.get_mut(key).unwrap();
         if session.refresh
-            || matches!(status, "terminal" | "unknown")
-            || self.canonical && status == "queued"
+            || matches!(status, "terminal" | "unknown" | "redirected" | "steered" | "queued")
             || response["voice_stopped"] == true
         {
             session.refresh = false;
@@ -2400,6 +2570,12 @@ impl Desktop {
         let Some(prepared) = self.workspace_mut().pending_submissions.remove(key) else {
             return;
         };
+        if let Some(session) = self.sessions.get_mut(key) {
+            for path in &prepared.files {
+                session.staged_draft_files.remove(path);
+                session.draft_upload_errors.remove(path);
+            }
+        }
         if prepared.queued && self.remove_followup_record(key, &prepared.id) {
             self.persist(cx);
             cx.notify();

@@ -662,20 +662,53 @@ pub(crate) async fn upload_chat_image(
     profile: &str,
     filename: &str,
     data_url: &str,
+    progress: Option<crate::upload_progress::Reporter>,
 ) -> Result<StagedImage> {
     let scope = if profile.is_empty() {
         Vec::new()
     } else {
         vec![("profile", profile.to_owned())]
     };
-    let reply = gateway
-        .api(
-            reqwest::Method::POST,
-            "api/chat/image-upload",
-            &scope,
-            Some(json!({"filename":filename, "data_url":data_url})),
-        )
+    let request = gateway
+        .api_request_builder(reqwest::Method::POST, "api/chat/image-upload", &scope, None)
         .await?;
+    #[derive(serde::Serialize)]
+    struct ImageUpload<'a> {
+        filename: &'a str,
+        data_url: &'a str,
+    }
+    let payload = serde_json::to_vec(&ImageUpload { filename, data_url })?;
+    let length = payload.len();
+    let body = if let Some(mut progress) = progress {
+        progress.sending(0, length as u64);
+        let chunks = futures_util::stream::unfold(
+            (payload, 0usize, progress),
+            |(data, offset, mut progress)| async move {
+                if offset == data.len() {
+                    return None;
+                }
+                let end = (offset + 64 * 1024).min(data.len());
+                let chunk = data[offset..end].to_vec();
+                if end == data.len() {
+                    progress.awaiting(end as u64);
+                } else {
+                    progress.sending(end as u64, data.len() as u64);
+                }
+                Some((Ok::<_, std::io::Error>(chunk), (data, end, progress)))
+            },
+        );
+        reqwest::Body::wrap_stream(chunks)
+    } else {
+        reqwest::Body::from(payload)
+    };
+    let response = request
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(reqwest::header::CONTENT_LENGTH, length)
+        .body(body)
+        .send()
+        .await
+        .map_err(|error| error.without_url())?;
+    let reply = Gateway::api_response(response).await?;
     let path = reply["path"]
         .as_str()
         .filter(|path| !path.is_empty())

@@ -73,9 +73,9 @@ use crate::{
 const LINE: u32 = 0xe4e7ed;
 pub(super) const CANVAS: u32 = 0xfdfdfd;
 const RAIL: u32 = 0xfefefe;
-const SURFACE: u32 = 0xffffff;
-const SELECTED: u32 = 0xe2e9f7;
-const DANGER: u32 = 0x9d3c32;
+pub(super) const SURFACE: u32 = 0xffffff;
+pub(super) const SELECTED: u32 = 0xe2e9f7;
+pub(super) const DANGER: u32 = 0x9d3c32;
 const UNREAD: u32 = 0x179f8b;
 const USER_MESSAGE_BACKGROUND: u32 = 0xf0f6fd;
 const USER_MESSAGE_BORDER: u32 = 0xd5e3f3;
@@ -138,6 +138,135 @@ pub(super) fn svg_symbol(asset: &'static str, size: f32, color: u32) -> Div {
         .size(px(size))
         .flex_none()
         .child(gpui::svg().path(asset).size_full().text_color(ink(color)))
+}
+
+fn upload_card(upload: &crate::upload_progress::Display, cx: &mut Context<Desktop>) -> gpui::Stateful<Div> {
+    use crate::upload_progress::{Stage, size_label};
+    use gpui_component::progress::Progress;
+
+    let stage = *upload.state.borrow();
+    let (status, detail, percent) = match stage {
+        Stage::Preparing => (tr("正在准备附件"), String::new(), None),
+        Stage::Sending { sent, total, .. } => {
+            let percent = (total > 0).then(|| (sent as f64 / total as f64 * 100.).min(99.9) as f32);
+            let size = format!("{} / {}", size_label(sent), size_label(total));
+            let pace = stage.speed_label();
+            let detail = pace.map_or_else(|| size.clone(), |speed| format!("{size} · {speed}"));
+            let status = if stage.waiting_for_network() {
+                tr("等待网络")
+            } else {
+                tr("正在上传")
+            };
+            (status, detail, percent)
+        }
+        Stage::Awaiting { bytes } => (tr("确认中"), size_label(bytes), None),
+    };
+
+    let label = if let Some(value) = percent.filter(|_| !stage.waiting_for_network()) {
+        format!("{}%", value.floor() as u32)
+    } else {
+        status.to_owned()
+    };
+    let name = file_name(&upload.path);
+    let cancel_path = upload.path.clone();
+    let icon = if is_image_file(&upload.path) {
+        icons::PHOTO
+    } else {
+        icons::FILE
+    };
+    let muted = percent.is_none() || stage.waiting_for_network();
+
+    div()
+        .id("upload-file-card")
+        .relative()
+        .w(px(272.))
+        .max_w_full()
+        .min_w_0()
+        .rounded(px(6.))
+        .border_1()
+        .border_color(ink(ACCENT).alpha(0.22))
+        .bg(ink(ACCENT).alpha(0.055))
+        .px_2()
+        .py(px(6.))
+        .flex()
+        .flex_col()
+        .gap(px(5.))
+        .tooltip(move |window, cx| Tooltip::new(name.clone()).build(window, cx))
+        .child(
+            div()
+                .min_w_0()
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .pr(px(17.))
+                .child(div().flex_none().child(svg_symbol(icon, 15., ACCENT)))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .text_size(px(11.))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
+                                        .text_color(ink(INK))
+                                        .child(file_name(&upload.path)),
+                                )
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_color(ink(if muted { MUTED } else { ACCENT }))
+                                        .child(label),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .h(px(14.))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(8.))
+                                .text_size(px(10.))
+                                .text_color(ink(MUTED))
+                                .child(div().min_w_0().truncate().child(detail))
+                                .when(upload.count > 1, |row| {
+                                    row.child(
+                                        div()
+                                            .flex_none()
+                                            .child(format!("{}/{}", upload.number, upload.count)),
+                                    )
+                                }),
+                        ),
+                ),
+        )
+        .child(
+            Progress::new("attachment-upload-progress")
+                .with_size(px(2.))
+                .color(ink(ACCENT).alpha(if muted { 0.55 } else { 0.9 }))
+                .accessibility_label(status)
+                .value(percent.unwrap_or_default())
+                .loading(percent.is_none()),
+        )
+        .child(
+            icon_button("cancel-upload", icons::TAB_CLOSE, tr("取消上传"))
+                .absolute()
+                .right(px(4.))
+                .top(px(2.))
+                .size(px(17.))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.remove_file(&cancel_path, cx);
+                })),
+        )
 }
 
 fn status_item(icon: &'static str, label: impl Into<SharedString>, icon_color: u32) -> Div {
@@ -346,6 +475,7 @@ impl Render for Desktop {
             .track_focus(&self.workspace_focus)
             .on_mouse_move(
                 cx.listener(|this, event: &gpui::MouseMoveEvent, window, cx| {
+                    this.voice_fan_pointer(event.position, window, cx);
                     if let Some(start) = this.maximized_drag {
                         let delta = event.position - start;
                         if event.pressed_button != Some(gpui::MouseButton::Left) {
@@ -579,6 +709,7 @@ impl Render for Desktop {
             )
             .children(self.cron_overlay(window, cx))
             .children(self.profile_editor_overlay(window, cx))
+            .children(self.voice_stop_notice(cx))
             .children(self.session_dialog_overlay(window, cx))
             .children(self.settings_overlay(window, cx))
             .children(self.palette_element(window, cx))
@@ -971,6 +1102,39 @@ impl Desktop {
         }
     }
 
+    fn attachment_transport_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        use crate::settings::AttachmentTransport;
+        use gpui_component::menu::DropdownMenu;
+
+        let weak = cx.entity().downgrade();
+        let mode = self.settings.attachment_transport;
+        let label = match mode {
+            AttachmentTransport::Auto => tr("上传 · 自动"),
+            AttachmentTransport::Base64 => tr("上传 · Base64"),
+        };
+        Button::new("status-attachment-transport")
+            .ghost()
+            .compact()
+            .h(px(20.))
+            .tooltip(tr("附件上传方式"))
+            .child(status_item(icons::FILE, label, MUTED))
+            .dropdown_menu_with_anchor(gpui::Anchor::BottomLeft, move |menu, _, _| {
+                [AttachmentTransport::Auto, AttachmentTransport::Base64].into_iter().fold(menu, |menu, item| {
+                    menu.item(tab_view::menu_item(
+                        &weak,
+                        item.label(),
+                        if item == mode { icons::TASK_CHECK } else { icons::FILE },
+                        true,
+                        move |this, _, cx| {
+                            this.settings.attachment_transport = item;
+                            this.persist(cx);
+                            cx.notify();
+                        },
+                    ))
+                })
+            })
+    }
+
     fn status_bar(&self, cx: &mut Context<Self>) -> Div {
         let host = self.gateway.as_ref().map_or_else(
             || tr("网关连接").to_owned(),
@@ -1021,9 +1185,11 @@ impl Desktop {
                     .tooltip(move |window, cx| Tooltip::new(cwd.clone()).build(window, cx))
                     .on_click(cx.listener(|this, _, window, cx| this.open_files(window, cx)))
             }))
+            .child(self.attachment_transport_menu(cx))
             .child(div().min_w_0().flex_1())
             .children(self.context_indicator(cx))
             .children(self.codex_quota(cx))
+            .children(self.busy_input_selector(cx))
             .children(self.approval_selector(cx))
             .children(version.map(|label| status_item(icons::HASH, label, MUTED).max_w(px(180.))))
             .when(self.out.is_none() && self.gateway.is_some(), |this| {
@@ -1289,7 +1455,7 @@ impl Desktop {
                                     .images()
                                     .iter()
                                     .any(|image| image.identity() == identity)
-                                    || reply_files(answer.body.display()).iter().any(|part| {
+                                    || reply_files(answer.body.display(), false).iter().any(|part| {
                                         matches!(part, ReplyPart::File { path, .. }
                                             if crate::media::ChatImage::from_reference(path)
                                                 .is_some_and(|image| image.identity() == identity))
@@ -1480,15 +1646,19 @@ impl Desktop {
         .min_h_0();
         let show_jump = !self.following && !self.at_latest();
         let messages_below = if show_jump { self.messages_below() } else { 0 };
+        let scrollbar_moved = self.transcript_scrollbar.has_navigation();
         let desktop = cx.entity().downgrade();
         div()
-            .when(show_jump, |view| {
+            .when(show_jump || scrollbar_moved, |view| {
                 view.on_children_prepainted(move |_, window, app| {
                     let Some(entity) = desktop.upgrade() else {
                         return;
                     };
-                    if entity.read(app).messages_below() != messages_below {
-                        window.on_next_frame(move |_, cx| entity.update(cx, |_, cx| cx.notify()));
+                    if scrollbar_moved || entity.read(app).messages_below() != messages_below {
+                        window.on_next_frame(move |_, cx| entity.update(cx, |this, cx| {
+                            this.apply_transcript_scrollbar(cx);
+                            cx.notify();
+                        }));
                     }
                 })
             })
@@ -1515,23 +1685,9 @@ impl Desktop {
                     cx.notify();
                 }
             }))
-            .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-                if this.pane_resize.is_none() && event.dragging() && !this.at_latest() {
-                    let changed = this.following;
-                    this.following = false;
-                    this.turn_rail.jumped = None;
-                    this.reading_moved(cx);
-                    if this.list.logical_scroll_top().item_ix <= 3 {
-                        this.older_history(cx);
-                    }
-                    if this.sync_turn_rail() || changed {
-                        cx.notify();
-                    }
-                }
-            }))
             .child(transcript)
             .children(self.sticky_prompt(message_size, cx))
-            .child(Scrollbar::vertical(&self.list))
+            .child(Scrollbar::vertical(&self.transcript_scrollbar))
             .children(show_jump.then(|| {
                 let label = if messages_below > 0 {
                     crate::i18n::format_text!(
@@ -1685,6 +1841,7 @@ impl Desktop {
             .as_ref()
             .and_then(|key| self.sessions.get(key));
         let running = session.is_some_and(|session| session.running);
+        let awaiting_input = session.is_some_and(|s| !s.prompts.is_empty());
         let session_id = self.selected.as_deref();
         let collapsed = session_id.is_some_and(|id| {
             self.workspace()
@@ -1857,9 +2014,10 @@ impl Desktop {
         let has_content = !files.is_empty() || !composer_text.trim().is_empty();
         let changing = self.model_controls.busy.contains(&self.key());
         let can_queue = has_content && !changing && !rewrite_pending && !pasting;
-        let can_submit = enabled && (running || can_queue);
+        let can_submit = enabled && (running || can_queue)
+            && (!has_content || !self.busy_input_saving());
         let stop_only = running && !can_queue;
-        let queueing = running
+        let queueing = running && (!files.is_empty() || awaiting_input)
             || self
                 .selected
                 .as_deref()
@@ -1871,6 +2029,9 @@ impl Desktop {
                     .get(&self.key())
                     .is_some_and(|prepared| prepared.staging)
             });
+        let upload = self.selected.as_ref()
+            .and_then(|key| self.sessions.get(key)?.upload.as_ref())
+            .filter(|upload| upload.started.elapsed() >= std::time::Duration::from_millis(180));
         let attachments = div()
             .id("draft-attachments")
             .flex()
@@ -1881,9 +2042,16 @@ impl Desktop {
             .overflow_y_scroll()
             .px_2()
             .pt_2()
+            .children(upload.filter(|upload| !files.contains(&upload.path)).map(|upload| upload_card(upload, cx)))
             .children(files.iter().enumerate().map(|(index, path)| {
+                if let Some(upload) = upload.filter(|upload| &upload.path == path) {
+                    return upload_card(upload, cx).into_any_element();
+                }
                 let name = file_name(path);
-                let tooltip = SharedString::from(name.clone());
+                let draft_session = self.selected.as_ref().and_then(|key| self.sessions.get(key));
+                let upload_error = draft_session.and_then(|session| session.draft_upload_errors.get(path));
+                let staged = draft_session.is_some_and(|session| session.staged_draft_files.contains_key(path));
+                let tooltip = SharedString::from(upload_error.cloned().unwrap_or_else(|| name.clone()));
                 let picture = is_image_file(path);
                 let thumbnail = self.media.draft_thumbnail(path);
                 let path = path.clone();
@@ -1948,6 +2116,8 @@ impl Desktop {
                     )
                 } else {
                     file_chip(name.into())
+                        .when(staged, |chip| chip.child(svg_symbol(icons::TASK_CHECK, 10., MUTED)))
+                        .children(upload_error.map(|_| div().flex_none().text_color(ink(DANGER)).child(tr("上传失败，发送时重试"))))
                 };
                 chip.id(("draft-file", index))
                     .when(!picture, |chip| {
@@ -1981,6 +2151,7 @@ impl Desktop {
                                 })),
                         )
                     })
+                    .into_any_element()
             }));
         let label = if stop_only {
             tr("停止")
@@ -2041,7 +2212,7 @@ impl Desktop {
             } else {
                 0.
             };
-        let stacked = self.composer_expanded || pane_width < 510.;
+        let stacked = self.composer_expanded || pane_width < 585.;
         let reference = self.reference_is_open(window, cx);
         let slash = !reference && self.slash_is_open(window, cx);
         let leading = self.composer_tools(may_edit_files, cx);
@@ -2126,12 +2297,14 @@ impl Desktop {
         } else {
             input
         };
-        let actions = div()
+        let voice_active = self.voice.is_conversation();
+        let actions = if voice_active { self.voice_conversation_pill(cx) } else { div()
             .flex_none()
             .flex()
             .items_center()
             .gap(px(4.))
             .child(self.model_pills(enabled, cx))
+            .child(self.voice_fan(enabled, cx))
             .children((running && can_queue).then(|| {
                 icon_button("stop-current-turn", icons::STOP, tr("停止当前回复"))
                     .size(px(26.))
@@ -2140,7 +2313,11 @@ impl Desktop {
                         cx.notify();
                     }))
             }))
-            .child(button);
+            .child(if !running && !has_content {
+                self.voice_primary(enabled, cx).into_any_element()
+            } else {
+                button.into_any_element()
+            }) };
         let row = if stacked {
             div()
                 .flex()
@@ -2176,6 +2353,15 @@ impl Desktop {
             .id("composer-panel")
             .w_full()
             .rounded(px(6.))
+            .when(voice_active, |panel| panel.capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                let key = &event.keystroke;
+                if !event.is_held && key.key == "space" && !key.modifiers.control && !key.modifiers.platform && !key.modifiers.alt
+                    && this.finish_voice_input(cx)
+                {
+                    cx.stop_propagation();
+                }
+            })))
+            .children(self.voice_status(cx).map(|activity| div().px_2().pt_1().child(activity)))
             .bg(crate::theme::composer(0xf9f9fb).alpha(0.93))
             .border_color(rgb(if focused { ACCENT } else { LINE }))
             .when(may_edit_files, |panel| {
@@ -2191,7 +2377,7 @@ impl Desktop {
                     .filter(|_| !collapsed)
                     .map(|(branch, cwd)| self.composer_workspace_row(branch, cwd, cx)),
             )
-            .when(!files.is_empty(), |panel| panel.child(attachments))
+            .when(!files.is_empty() || upload.is_some(), |panel| panel.child(attachments))
             .child(row.min_h(px(35.)).px_2().py(px(4.)));
         stack = stack.child(
             div()
@@ -2410,7 +2596,6 @@ fn message_body(
     window: &mut Window,
     cx: &mut gpui::App,
 ) -> AnyElement {
-    let copy = message.display().clone();
     let (files, visible) = if user {
         leading_file_refs(message.display())
     } else {
@@ -2461,11 +2646,38 @@ fn message_body(
             })
         });
     let media = images.strip(message.images(), user, desktop, cx);
-    let action = message_icon_button("copy-message", icons::COPY, tr("复制消息")).on_click(
+    // Assistant source keeps the media directives and Markdown that the transcript projects away.
+    let copy = if user { message.display() } else { message.raw() }.clone();
+    let copied = window.use_keyed_state(format!("{id}-copied"), cx, |_, _| None::<std::time::Instant>);
+    let confirmation = copied.read(cx).is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(1300));
+    let owner = desktop.downgrade();
+    let action = (!copy.is_empty()).then(|| message_icon_button(
+        "copy-message",
+        if confirmation { icons::TASK_CHECK } else { icons::COPY },
+        if confirmation { tr("已复制消息") } else { tr("复制消息") },
+    ).on_click(
         move |_, _, cx| {
+            cx.stop_propagation();
             cx.write_to_clipboard(ClipboardItem::new_string(copy.to_string()));
+            #[cfg(windows)]
+            if cx.read_from_clipboard().and_then(|item| item.text()).as_deref() != Some(copy.as_ref()) {
+                copied.update(cx, |at, _| *at = None);
+                let _ = owner.update(cx, |this, cx| {
+                    this.banner = Some(tr("无法写入剪贴板，请再复制一次").into());
+                    cx.notify();
+                });
+                return;
+            }
+            copied.update(cx, |at, _| *at = Some(std::time::Instant::now()));
+            let _ = owner.update(cx, |_, cx| {
+                cx.notify();
+                cx.spawn(async move |owner, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(1300)).await;
+                    let _ = owner.update(cx, |_, cx| cx.notify());
+                }).detach();
+            });
         },
-    );
+    ));
     let time = timestamp
         .and_then(|seconds| DateTime::<Utc>::from_timestamp(seconds, 0))
         .map(|at| at.with_timezone(&Local));
@@ -2474,13 +2686,20 @@ fn message_body(
     } else {
         (None, rewrite)
     };
+    let chat = desktop.read(cx);
+    let actions_inset = if chat.settings.display.turn_rail && !chat.turns.is_empty() {
+        super::turn_rail::RAIL_GUTTER - TRANSCRIPT_INSET + 4.
+    } else {
+        4.
+    };
     let footer = div()
         .h(px(23.))
         .flex()
         .justify_end()
         .items_center()
         .gap_2()
-        .px_1()
+        .pl_1()
+        .pr(px(if user { 4. } else { actions_inset }))
         .invisible()
         .group_hover("message", |style| style.visible())
         .children(time.map(|at| {
@@ -2535,7 +2754,7 @@ fn message_body(
         )
         .children(branch)
         .children(edit)
-        .child(action)
+        .children(action)
         .children(retry);
     if user {
         div()
@@ -2548,7 +2767,7 @@ fn message_body(
             .children((!editing).then(|| {
                 footer
                     .absolute()
-                    .right(px(4.))
+                    .right(px(actions_inset))
                     .top(px(4.))
                     .rounded(px(4.))
                     .bg(rgb(highlight.unwrap_or(USER_MESSAGE_BACKGROUND)))
@@ -2837,7 +3056,7 @@ fn reply_body(
     window: &mut Window,
     app: &mut gpui::App,
 ) -> AnyElement {
-    let mut parts = reply_files(text);
+    let mut parts = reply_files(text, false);
     if parts.is_empty() {
         parts.push(ReplyPart::Text(text));
     }

@@ -26,6 +26,19 @@ fn same_record(a: &Value, b: &Value) -> bool {
 }
 
 impl HistoryWindow {
+    pub(super) fn matches_tail(&self, page: &HistoryPage) -> bool {
+        match (self.rows.last(), page.rows.last()) {
+            (Some(saved), Some(latest)) => {
+                self.resolved == page.resolved && same_record(saved, latest)
+                    && saved["content"].as_str().zip(latest["content"].as_str())
+                        .is_none_or(|(before, after)| before == after)
+                    && saved["finish_reason"] == latest["finish_reason"]
+            }
+            (None, None) => true,
+            _ => false,
+        }
+    }
+
     fn merge(&mut self, mut page: HistoryPage, older: bool) -> Result<()> {
         // The latest-first REST offset can move when the server appends messages.
         // Request a one-row overlap and join only at the known boundary.
@@ -190,7 +203,7 @@ impl Desktop {
         if !self
             .sessions
             .get(key)
-            .is_some_and(|s| s.history_via_rest && s.history_error.is_none())
+            .is_some_and(|s| s.awaiting_first_history || s.history_via_rest && s.history_error.is_none())
         {
             self.read_history_page(key, false, cx);
         }
@@ -203,6 +216,14 @@ impl Desktop {
     }
 
     pub(super) fn read_history_page(&mut self, key: &str, older: bool, cx: &mut Context<Self>) {
+        self.load_history_page(key, older, false, cx);
+    }
+
+    pub(super) fn refresh_changed_history(&mut self, key: &str, cx: &mut Context<Self>) {
+        self.load_history_page(key, false, true, cx);
+    }
+
+    fn load_history_page(&mut self, key: &str, older: bool, background: bool, cx: &mut Context<Self>) {
         if self.history_reads.contains_key(key)
             || self
                 .sessions
@@ -232,6 +253,7 @@ impl Desktop {
         session.command_receipts = receipts;
         session.profile.clone_from(&profile);
         session.history_error = None;
+        let before = background.then(|| (session.runtime.clone(), session.seq, session.epoch.clone()));
         let id = key.to_owned();
         let read = self
             .runtime
@@ -240,9 +262,22 @@ impl Desktop {
         let id = key.to_owned();
         let job = cx.spawn(async move |view, cx| {
             let page = read.await.context(tr("无法读取会话历史")).and_then(|p| p);
+            while view.update(cx, |this, _| {
+                this.selected.as_deref() == Some(&id) && this.transcript_scrollbar.dragging()
+            }).unwrap_or(false) {
+                cx.background_executor().timer(std::time::Duration::from_millis(35)).await;
+            }
             let _ = handle.update(cx, |_, window, app| {
                 view.update(app, |this, cx| {
                     this.history_reads.remove(&id);
+                    if let Some((runtime, seq, epoch)) = &before
+                        && this.sessions.get(&id).is_none_or(|s| {
+                            !s.attached || s.loading || s.running || s.submitting || s.uncertain
+                                || &s.runtime != runtime || s.seq != *seq || &s.epoch != epoch
+                        })
+                    {
+                        return;
+                    }
                     if page
                         .as_ref()
                         .is_err_and(crate::gateway::missing_history_endpoint)
@@ -256,9 +291,17 @@ impl Desktop {
                         cx.notify();
                         return;
                     }
+                    // A newly attached runtime may not have a stored row until its first turn.
+                    if page.as_ref().is_err_and(crate::gateway::missing_stored_session)
+                        && this.sessions.get(&id).is_some_and(|session| session.awaiting_first_history)
+                    {
+                        cx.notify();
+                        return;
+                    }
                     let result = page
                         .and_then(|page| this.display_history_page(&id, page, older, window, cx));
                     if let Err(error) = result
+                        && !background
                         && let Some(session) = this.sessions.get_mut(&id)
                     {
                         session.history_error = Some(crate::i18n::format_text!(
@@ -304,6 +347,7 @@ impl Desktop {
         let merged = history.merge(page, older);
         if merged.is_ok() {
             session.replace_history(Some(&history.rows), None);
+            session.awaiting_first_history = false;
             session.history_via_rest = true;
             session.history_partial = history.older_offset.is_some();
         }
@@ -331,6 +375,9 @@ impl Desktop {
             self.view_revision = self.view_revision.wrapping_add(1);
             self.turn_rail.jumped = None;
             self.sync_list_at(inserted_rows, position);
+            if let Some(shift) = inserted_rows {
+                self.shift_search_hits(shift);
+            }
             self.transcript_changed(cx);
             if self.files.open && self.files.collection.open {
                 self.show_session_files(cx);

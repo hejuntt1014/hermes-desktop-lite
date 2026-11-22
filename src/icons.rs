@@ -19,6 +19,14 @@ pub const ARROW_UP: &str = "tabler/arrow-up.svg";
 pub const STOP: &str = "tabler/player-stop.svg";
 pub const WORLD: &str = "tabler/world.svg";
 pub const ACTIVITY: &str = "tabler/activity.svg";
+pub const MICROPHONE: &str = "status/microphone.svg";
+pub const VOICE_WAVE: &str = "status/voice-wave.svg";
+pub const VOICE_SPINNER: &str = "status/voice-spinner.svg";
+pub const VOICE_EAR: &str = "status/voice-ear.svg";
+pub const VOICE_EAR_OFF: &str = "status/voice-ear-off.svg";
+pub const VOICE_SPEAKER: &str = "status/voice-speaker.svg";
+pub const VOICE_SPEAKER_OFF: &str = "status/voice-speaker-off.svg";
+pub const VOICE_MIC_OFF: &str = "status/voice-mic-off.svg";
 pub const FOLDER_OPEN: &str = "tabler/folder-open.svg";
 pub const HASH: &str = "tabler/hash.svg";
 pub const DOTS_VERTICAL: &str = "tabler/dots-vertical.svg";
@@ -88,6 +96,35 @@ const ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../assets/status/task-check.svg"),
     ),
     (CLOCK, include_bytes!("../assets/tabler/clock.svg")),
+    (
+        MICROPHONE,
+        include_bytes!("../assets/status/microphone.svg"),
+    ),
+    (
+        VOICE_WAVE,
+        include_bytes!("../assets/status/voice-wave.svg"),
+    ),
+    (
+        VOICE_SPINNER,
+        include_bytes!("../assets/status/voice-spinner.svg"),
+    ),
+    (VOICE_EAR, include_bytes!("../assets/status/voice-ear.svg")),
+    (
+        VOICE_EAR_OFF,
+        include_bytes!("../assets/status/voice-ear-off.svg"),
+    ),
+    (
+        VOICE_SPEAKER,
+        include_bytes!("../assets/status/voice-speaker.svg"),
+    ),
+    (
+        VOICE_SPEAKER_OFF,
+        include_bytes!("../assets/status/voice-speaker-off.svg"),
+    ),
+    (
+        VOICE_MIC_OFF,
+        include_bytes!("../assets/status/voice-mic-off.svg"),
+    ),
     (EYE, include_bytes!("../assets/phosphor/eye-fill.svg")),
     (
         "phosphor/LICENSE",

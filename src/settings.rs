@@ -17,9 +17,30 @@ pub struct Settings {
     pub remote_auth: Option<RemoteAuth>,
     pub workspaces: BTreeMap<String, Workspace>,
     pub display: DisplayPreferences,
+    pub attachment_transport: AttachmentTransport,
+    pub voice_engine: crate::voice::VoiceEngine,
+    pub voice_auto_speak: bool,
+    pub voice_wake: BTreeSet<String>,
     pub window: Option<SavedWindow>,
     #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     pub clipboard_files: BTreeSet<PathBuf>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentTransport {
+    #[default]
+    Auto,
+    Base64,
+}
+
+impl AttachmentTransport {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => tr("自动"),
+            Self::Base64 => "Base64",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

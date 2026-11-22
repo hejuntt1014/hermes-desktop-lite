@@ -2,9 +2,12 @@ use crate::theme::{ink, rgb};
 
 use crate::i18n::text as tr;
 
+use std::time::Duration;
+
 use gpui::{
-    Anchor, AnyElement, AppContext, Context, Div, Focusable, IntoElement, Render, SharedString,
-    Window, div, prelude::*, px,
+    Anchor, Animation, AnimationExt as _, AnyElement, AppContext, Bounds, Context, Div, Focusable,
+    IntoElement, PathBuilder, Pixels, Render, SharedString, Window, canvas, div, linear_color_stop,
+    linear_gradient, point, prelude::*, px,
 };
 use gpui_component::{
     Sizable,
@@ -331,6 +334,7 @@ impl Desktop {
         entry: sidebar_tree::Entry,
         now: i64,
         desktop: gpui::WeakEntity<Self>,
+        reduce_motion: bool,
     ) -> AnyElement {
         let sidebar_tree::Entry { row, depth, last } = entry;
         let unread = self
@@ -342,6 +346,7 @@ impl Desktop {
         let running = session.is_some_and(|session| session.running);
         let waiting = session.is_some_and(|session| !session.prompts.is_empty());
         let background = self.session_has_activity(row);
+        let show_running = (running || background) && !waiting && !row.archived && self.out.is_some();
         let key = row.id.clone();
         let title_color = self
             .title_color(&row.profile, &row.id, row.pin_order_key())
@@ -362,6 +367,7 @@ impl Desktop {
         let row = div()
             .id("row")
             .group("sidebar-session")
+            .relative()
             .h(px(26.))
             .flex_none()
             .rounded(px(3.))
@@ -507,6 +513,9 @@ impl Desktop {
                             ),
                     ),
             )
+            .when(show_running, |row| {
+                row.child(running_outline(reduce_motion))
+            })
             .context_menu(move |menu, window, cx| {
                 tab_view::sidebar_menu(menu, &desktop, &menu_summary, window, cx)
             });
@@ -555,6 +564,111 @@ impl Desktop {
             )
             .child(row)
             .into_any_element()
+    }
+}
+
+fn running_outline(reduce_motion: bool) -> AnyElement {
+    let accent = rgb(ACCENT);
+    let track = div()
+        .absolute()
+        .inset_0()
+        .rounded(px(3.))
+        .border_1()
+        .border_color(accent.alpha(if reduce_motion { 0.65 } else { 0.17 }));
+    if reduce_motion {
+        return track.into_any_element();
+    }
+    track
+        .with_animation(
+            "session-running-outline",
+            Animation::new(Duration::from_millis(2230))
+                .repeat()
+                .with_max_fps(60.),
+            move |outline, phase| {
+                outline.child(
+                    canvas(
+                        |_, _, _| (),
+                        move |bounds, (), window, _| paint_running_outline(bounds, phase, window),
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
+            },
+        )
+        .into_any_element()
+}
+
+fn paint_running_outline(bounds: Bounds<Pixels>, phase: f32, window: &mut Window) {
+    let inset = px(1.);
+    let radius = px(2.);
+    let (left, top) = (bounds.left() + inset, bounds.top() + inset);
+    let (right, bottom) = (bounds.right() - inset, bounds.bottom() - inset);
+    if right - left <= radius * 2. || bottom - top <= radius * 2. {
+        return;
+    }
+
+    let outline = [
+        point(left + radius, top),
+        point(right - radius, top),
+        point(right, top + radius),
+        point(right, bottom - radius),
+        point(right - radius, bottom),
+        point(left + radius, bottom),
+        point(left, bottom - radius),
+        point(left, top + radius),
+        point(left + radius, top),
+    ];
+    let mut lengths = [0.; 9];
+    for (edge, vertices) in outline.windows(2).enumerate() {
+        let delta = vertices[1] - vertices[0];
+        lengths[edge + 1] = lengths[edge] + f32::from(delta.x).hypot(f32::from(delta.y));
+    }
+    let perimeter = lengths[outline.len() - 1];
+    let beam_length = perimeter * 0.32;
+    let start = (1. + phase) * perimeter - beam_length;
+    let accent = rgb(ACCENT);
+    let stops = [(0., 0.), (0.33, 0.17), (0.67, 0.94), (0.85, 0.48), (1., 0.)];
+    for loop_offset in [0., perimeter] {
+        for (edge, vertices) in outline.windows(2).enumerate() {
+            let edge_start = lengths[edge] + loop_offset;
+            let edge_end = lengths[edge + 1] + loop_offset;
+            if edge_end <= start || edge_start >= start + beam_length {
+                continue;
+            }
+            let delta = vertices[1] - vertices[0];
+            let angle = f32::from(delta.y).atan2(f32::from(delta.x)).to_degrees() + 90.;
+            let point_at = |distance| {
+                vertices[0] + delta * ((distance - edge_start) / (edge_end - edge_start))
+            };
+            for stops in stops.windows(2) {
+                let (a, alpha_a) = stops[0];
+                let (b, alpha_b) = stops[1];
+                let band_start = start + beam_length * a;
+                let band_end = start + beam_length * b;
+                let from = edge_start.max(band_start);
+                let to = edge_end.min(band_end);
+                if from >= to {
+                    continue;
+                }
+                let alpha_at = |distance| {
+                    alpha_a
+                        + (alpha_b - alpha_a) * ((distance - band_start) / (band_end - band_start))
+                };
+                let mut path = PathBuilder::stroke(px(1.35));
+                path.move_to(point_at(from));
+                path.line_to(point_at(to));
+                if let Ok(path) = path.build() {
+                    window.paint_path(
+                        path,
+                        linear_gradient(
+                            angle,
+                            linear_color_stop(accent.alpha(alpha_at(from)), 0.),
+                            linear_color_stop(accent.alpha(alpha_at(to)), 1.),
+                        ),
+                    );
+                }
+            }
+        }
     }
 }
 

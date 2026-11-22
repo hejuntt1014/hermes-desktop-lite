@@ -1,0 +1,101 @@
+name: Mobile builds
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Preview target
+        required: true
+        type: choice
+        options:
+          - android-arm64
+          - android-x64
+          - ios-simulator
+          - ios-unsigned
+permissions:
+  contents: read
+jobs:
+  mobile:
+    name: ${{ inputs.target }}
+    runs-on: ${{ startsWith(inputs.target, 'ios-') && 'macos-15' || 'ubuntu-24.04' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install Flutter
+        run: |
+          git init "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" fetch --depth=1 https://github.com/flutter/flutter.git ae9b586f34a8443573f82ef57c3bf914a908cbf7
+          git -C "$RUNNER_TEMP/flutter" checkout --detach FETCH_HEAD
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - run: flutter pub get --enforce-lockfile
+      - name: Build Android preview
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          case "$TARGET" in
+            android-arm64) platform=android-arm64; abi=arm64-v8a ;;
+            android-x64) platform=android-x64; abi=x86_64 ;;
+            *) exit 1 ;;
+          esac
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          flutter build apk --no-pub --release --split-per-abi --target-platform "$platform"
+          mkdir -p build/preview
+          cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "build/preview/hermes-mobile-$TARGET.apk"
+      - name: Build unsigned iOS device app
+        if: inputs.target == 'ios-unsigned'
+        run: |
+          flutter build ios --no-pub --release --no-codesign
+          test -f build/ios/iphoneos/Runner.app/PlugIns/ShareExtension.appex/Info.plist
+          mkdir -p build/preview
+          ditto -c -k --keepParent build/ios/iphoneos/Runner.app build/preview/hermes-mobile-ios-unsigned.zip
+      - name: Build and launch the iOS Simulator app
+        if: inputs.target == 'ios-simulator'
+        run: |
+          flutter build ios --no-pub --debug --simulator
+          test -f build/ios/iphonesimulator/Runner.app/PlugIns/ShareExtension.appex/Info.plist
+          simulator_sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          device=$(xcrun simctl list devices available -j | python3 -c '
+          import json
+          import sys
+
+          devices = json.load(sys.stdin)["devices"]
+          sdk_version = tuple(map(int, sys.argv[1].split(".")[:2]))
+          def version(runtime):
+              return tuple(map(int, runtime.split(".iOS-")[1].split("-")[:2]))
+
+          runtimes = sorted(
+              (runtime for runtime in devices if ".iOS-" in runtime and version(runtime) <= sdk_version),
+              key=version,
+              reverse=True,
+          )
+          for runtime in runtimes:
+              for device in devices[runtime]:
+                  if device["name"].startswith("iPhone") and device["isAvailable"]:
+                      print(device["udid"])
+                      sys.exit(0)
+          sys.exit("No available iPhone simulator")
+          ' "$simulator_sdk")
+          trap 'xcrun simctl shutdown "$device" || true' EXIT
+          xcrun simctl bootstatus "$device" -b
+          app=build/ios/iphonesimulator/Runner.app
+          bundle=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          xcrun simctl install "$device" "$app"
+          launch=$(xcrun simctl launch "$device" "$bundle")
+          printf '%s\n' "$launch"
+          pid=${launch##*: }
+          sleep 5
+          if [[ ! "$pid" =~ ^[1-9][0-9]*$ ]] || ! kill -0 "$pid" 2>/dev/null; then
+            echo "::error::The app did not stay running after launch."
+            exit 1
+          fi
+          mkdir -p build/preview
+          ditto -c -k --keepParent "$app" build/preview/hermes-mobile-ios-simulator.zip
+      - name: Upload preview
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: hermes-mobile-${{ inputs.target }}
+          path: mobile/build/preview/
+          if-no-files-found: error

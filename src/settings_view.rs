@@ -14,7 +14,7 @@ use gpui_component::{
 
 use crate::{
     i18n::Language,
-    settings::{DisplayPreferences, ReasoningVisibility},
+    settings::{AttachmentTransport, DisplayPreferences, ReasoningVisibility},
 };
 
 use super::{
@@ -390,6 +390,17 @@ impl Desktop {
         div()
             .flex()
             .flex_col()
+            .child(setting_row(
+                tr("附件上传方式"),
+                Some(tr("自动模式优先通过 HTTP 传送大附件。")),
+                segments(
+                    "attachment-transport",
+                    [AttachmentTransport::Auto, AttachmentTransport::Base64].map(|mode| (mode, mode.label())),
+                    self.settings.attachment_transport,
+                    |this, mode, _, _| this.settings.attachment_transport = mode,
+                    cx,
+                ),
+            ))
             .child(setting_row(
                 tr("消息字号"),
                 None,

@@ -1,0 +1,2 @@
+HERMES_IOS_BUNDLE_ID = io.github.hejuntt1014.hermesMobile
+HERMES_SHARE_APP_GROUP = group.$(HERMES_IOS_BUNDLE_ID)

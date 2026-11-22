@@ -5,6 +5,7 @@ mod auth;
 mod background_notice;
 mod command_receipt;
 mod file_upload;
+mod upload_progress;
 mod gateway;
 mod i18n;
 mod icons;
@@ -21,6 +22,9 @@ mod style;
 mod terminal_appearance;
 mod theme;
 mod theme_package;
+mod voice;
+mod voice_audio;
+mod voice_live;
 mod wallpapers;
 
 use anyhow::Result;

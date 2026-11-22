@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gpui::{Context, Task, Window};
@@ -25,6 +25,8 @@ pub(super) struct WorkRequest {
 pub(super) struct WorkMonitor {
     timer: Option<Task<()>>,
     rosters: HashMap<String, Roster>,
+    tail_read: Option<Task<()>>,
+    last_tail: Option<(String, Instant)>,
 }
 
 #[derive(Default)]
@@ -42,10 +44,12 @@ impl Desktop {
             loop {
                 cx.background_executor().timer(Duration::from_secs(3)).await;
                 if view
-                    .update_in(cx, |this, window, _| {
+                    .update_in(cx, |this, window, cx| {
                         if window.is_window_active() {
                             this.poll_work();
+                            this.check_open_transcript(false, cx);
                         }
+                        this.check_pending_turns();
                     })
                     .is_err()
                 {
@@ -54,6 +58,101 @@ impl Desktop {
             }
         }));
         self.poll_work();
+    }
+
+    pub(super) fn check_open_transcript(&mut self, changed: bool, cx: &mut Context<Self>) {
+        let Some(key) = self.selected.clone() else {
+            return;
+        };
+        let Some(session) = self.sessions.get(&key) else {
+            return;
+        };
+        if self.out.is_none()
+            || !session.attached
+            || session.loading
+            || session.submitting
+            || session.running
+            || session.uncertain
+            || session.history_rest_unavailable
+            || self.history_reads.contains_key(&key)
+            || self.work_monitor.tail_read.is_some()
+        {
+            return;
+        }
+        let interval = Duration::from_secs(if changed { 2 } else { 20 });
+        if self
+            .work_monitor
+            .last_tail
+            .as_ref()
+            .is_some_and(|(id, at)| id == &key && at.elapsed() < interval)
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway.clone() else {
+            return;
+        };
+        let profile = session.profile.clone();
+        let runtime = session.runtime.clone();
+        let seq = session.seq;
+        let id = key.clone();
+        self.work_monitor.last_tail = Some((key.clone(), Instant::now()));
+        let read = self
+            .runtime
+            .spawn(async move { gateway.history_page(&id, &profile, 0, 1).await });
+        self.work_monitor.tail_read = Some(cx.spawn(async move |view, cx| {
+            let result = read.await;
+            let _ = view.update(cx, |this, cx| {
+                this.work_monitor.tail_read = None;
+                if let Ok(Ok(page)) = result
+                    && this.selected.as_ref() == Some(&key)
+                    && !this.history_reads.contains_key(&key)
+                    && this.sessions.get(&key).is_some_and(|s| {
+                        s.attached
+                            && !s.loading
+                            && !s.running
+                            && !s.submitting
+                            && !s.uncertain
+                            && s.seq == seq
+                            && s.runtime == runtime
+                            && !s.history_window.matches_tail(&page)
+                    })
+                {
+                    this.refresh_changed_history(&key, cx);
+                }
+            });
+        }));
+    }
+
+    fn check_pending_turns(&mut self) {
+        if self.out.is_none() {
+            return;
+        }
+        let probes: Vec<_> =
+            self.sessions
+                .iter()
+                .filter(|(key, s)| {
+                    s.attached
+                        && !s.loading
+                        && !s.submitting
+                        && !s.uncertain
+                        && s.error.is_none()
+                        && (s.running || !s.queued.is_empty() || self.has_followups(key))
+                        && s.last_turn_activity
+                            .is_none_or(|at| at.elapsed() >= Duration::from_secs(20))
+                        && !self.pending.values().any(
+                            |call| matches!(call, Call::CheckTurn { key: id, .. } if id == *key),
+                        )
+                })
+                .map(|(key, s)| (key.clone(), s.runtime.clone(), s.profile.clone(), s.seq))
+                .collect();
+        for (key, runtime, profile, seq) in probes {
+            self.sessions.get_mut(&key).unwrap().last_turn_activity = Some(Instant::now());
+            self.call(
+                "session.active_list",
+                json!({"profile": profile, "current_session_id": runtime}),
+                Call::CheckTurn { key, runtime, seq },
+            );
+        }
     }
 
     pub(super) fn poll_work(&mut self) {

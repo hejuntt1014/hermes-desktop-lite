@@ -1,7 +1,9 @@
-use std::{borrow::Cow, collections::HashMap, ops::Range};
+use std::{borrow::Cow, collections::HashMap, ops::Range, path::Path};
 
 use markdown::{ParseOptions, mdast::Node, to_mdast};
 use percent_encoding::percent_decode_str;
+
+use crate::media::is_image_file;
 
 pub(super) enum ReplyPart<'a> {
     Text(&'a str),
@@ -205,7 +207,7 @@ fn link_filename(path: &str) -> Option<&str> {
     reference(path, true).map(|(_, filename)| filename)
 }
 
-pub(super) fn reply_files(text: &str) -> Vec<ReplyPart<'_>> {
+pub(super) fn reply_files(text: &str, include_bare_images: bool) -> Vec<ReplyPart<'_>> {
     if !text.contains(['/', '\\']) && !text.contains("MEDIA:") {
         return Vec::new();
     }
@@ -238,7 +240,7 @@ pub(super) fn reply_files(text: &str) -> Vec<ReplyPart<'_>> {
         }
         if fence.is_none()
             && !line.starts_with([' ', '\t'])
-            && let Some((path, label)) = file_line(trimmed)
+            && let Some((path, label)) = file_line(trimmed, include_bare_images)
         {
             if start < offset {
                 parts.push(ReplyPart::Text(&text[start..offset]));
@@ -254,7 +256,7 @@ pub(super) fn reply_files(text: &str) -> Vec<ReplyPart<'_>> {
     parts
 }
 
-fn file_line(line: &str) -> Option<(&str, &str)> {
+fn file_line(line: &str, include_bare_images: bool) -> Option<(&str, &str)> {
     if let Some(path) = line.strip_prefix("MEDIA:") {
         let path = unquote(path.trim());
         return reference(path, true);
@@ -268,7 +270,8 @@ fn file_line(line: &str) -> Option<(&str, &str)> {
     {
         return Some((path, if label.is_empty() { name } else { label }));
     }
-    reference(line, false)
+    let (path, label) = reference(line, false)?;
+    (include_bare_images || !is_image_file(Path::new(label))).then_some((path, label))
 }
 
 fn reference(path: &str, allow_relative: bool) -> Option<(&str, &str)> {

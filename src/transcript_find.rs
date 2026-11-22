@@ -25,6 +25,7 @@ pub(super) struct TranscriptFind {
     index_revision: u64,
     hits: Vec<Hit>,
     active: usize,
+    reveal_pending: bool,
 }
 
 struct Segment {
@@ -52,6 +53,7 @@ impl TranscriptFind {
             index_revision: 0,
             hits: Vec::new(),
             active: 0,
+            reveal_pending: false,
         }
     }
 
@@ -101,6 +103,7 @@ impl Desktop {
         find.query = "".into();
         find.hits.clear();
         find.active = 0;
+        find.reveal_pending = false;
         if find.input.read(cx).focus_handle(cx).is_focused(window) {
             find.prior_focus
                 .take()
@@ -123,8 +126,9 @@ impl Desktop {
         find.job = None;
         find.hits.clear();
         find.active = 0;
+        find.reveal_pending = true;
         if self.transcript_find.searching() { self.older_history(cx); }
-        self.schedule_transcript_find(true, cx);
+        self.schedule_transcript_find(cx);
         cx.notify();
     }
 
@@ -135,10 +139,20 @@ impl Desktop {
         }
         find.index = None;
         find.index_revision = find.index_revision.wrapping_add(1);
-        self.schedule_transcript_find(false, cx);
+        self.schedule_transcript_find(cx);
     }
 
-    fn schedule_transcript_find(&mut self, reveal: bool, cx: &mut Context<Self>) {
+    pub(super) fn cancel_search_reveal(&mut self) {
+        self.transcript_find.reveal_pending = false;
+    }
+
+    pub(super) fn shift_search_hits(&mut self, rows: usize) {
+        for hit in &mut self.transcript_find.hits {
+            hit.row += rows;
+        }
+    }
+
+    fn schedule_transcript_find(&mut self, cx: &mut Context<Self>) {
         let find = &mut self.transcript_find;
         if !find.open || find.query.is_empty() || find.job.is_some() {
             return;
@@ -188,6 +202,10 @@ impl Desktop {
             let _ = view.update(cx, |this, cx| {
                 let state = &mut this.transcript_find;
                 state.job = None;
+                if state.index_revision != revision {
+                    this.schedule_transcript_find(cx);
+                    return;
+                }
                 if let Ok((index, hits)) = searched {
                     let previous = state.hits.get(state.active);
                     state.active = previous
@@ -200,13 +218,13 @@ impl Desktop {
                         })
                         .unwrap_or(0);
                     state.hits = hits;
-                    if state.index_revision == revision {
-                        state.index = Some(index);
-                    }
+                    state.index = Some(index);
                 }
-                if state.index_revision != revision {
-                    this.schedule_transcript_find(reveal, cx);
-                } else if reveal {
+                if !this.transcript_scrollbar.dragging()
+                    && !this.transcript_scrollbar.has_navigation()
+                    && state.reveal_pending
+                    && !state.hits.is_empty()
+                {
                     this.reveal_transcript_hit(cx);
                 }
                 cx.notify();
@@ -244,6 +262,7 @@ impl Desktop {
     }
 
     fn reveal_transcript_hit(&mut self, cx: &mut Context<Self>) {
+        self.cancel_search_reveal();
         let find = &self.transcript_find;
         if let Some(item_ix) = find
             .hits
@@ -252,6 +271,7 @@ impl Desktop {
         {
             self.following = false;
             self.turn_rail.jumped = None;
+            self.pending_bookmark = None;
             self.list.scroll_to(ListOffset {
                 item_ix,
                 offset_in_item: px(0.),

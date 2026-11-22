@@ -15,6 +15,7 @@ use super::Desktop;
 const TICK_HEIGHT: f32 = 7.;
 const RAIL_WIDTH: f32 = 48.;
 const SCROLLBAR_GUTTER: f32 = 16.;
+pub(super) const RAIL_GUTTER: f32 = RAIL_WIDTH + SCROLLBAR_GUTTER;
 const TICK_INSET: f32 = 4.;
 const BAR_WIDTH: f32 = 8.;
 const PREVIEW_HEIGHT: f32 = 25.;

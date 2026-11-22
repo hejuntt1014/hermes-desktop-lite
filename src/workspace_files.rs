@@ -14,6 +14,7 @@ use gpui_component::{
     Sizable,
     button::{Button, ButtonVariants},
     menu::{DropdownMenu, PopupMenuItem},
+    progress::Progress,
     scroll::Scrollbar,
     tooltip::Tooltip,
 };
@@ -58,7 +59,7 @@ struct FileEntry {
 }
 
 enum FilePreview {
-    Pending,
+    Pending(PreviewProgress),
     Text {
         content: SharedString,
         lines: Arc<[SharedString]>,
@@ -73,6 +74,13 @@ enum FilePreview {
     Workbook(workspace_workbook::Workbook),
     Binary,
     Failed(SharedString),
+}
+
+#[derive(Clone, Copy)]
+enum PreviewProgress {
+    Opening,
+    Reading { bytes: usize, total: Option<u64> },
+    ParsingWorkbook,
 }
 
 #[derive(Default)]
@@ -332,12 +340,13 @@ impl Desktop {
         let (Some(gateway), Some(scope)) = (self.gateway.clone(), self.files.scope.clone()) else {
             return;
         };
-        self.files.preview = Some(FilePreview::Pending);
+        self.files.preview = Some(FilePreview::Pending(PreviewProgress::Opening));
         self.files.preview_scroll = Default::default();
         self.files.markdown_scroll = ScrollHandle::new();
         self.files.markdown_source = false;
         self.files.markdown_jump = None;
         self.files.selected = Some(entry.clone());
+        let (updates, mut progress) = tokio::sync::watch::channel(PreviewProgress::Opening);
         let fetch = self.runtime.spawn(async move {
             let path = scope.file_path(&gateway, &entry.path).await?;
             if let Some(image) = ChatImage::from_reference(&path) {
@@ -358,8 +367,12 @@ impl Desktop {
                         &scope.session,
                         &scope.profile,
                         workspace_workbook::WORKBOOK_BYTES,
+                        |bytes, total| {
+                            updates.send_replace(PreviewProgress::Reading { bytes, total });
+                        },
                     )
                     .await?;
+                updates.send_replace(PreviewProgress::ParsingWorkbook);
                 let book =
                     tokio::task::spawn_blocking(move || workspace_workbook::Workbook::open(bytes))
                         .await??;
@@ -369,6 +382,20 @@ impl Desktop {
         });
         let abort = fetch.abort_handle();
         let task = cx.spawn(async move |view, cx| {
+            while progress.changed().await.is_ok() {
+                let progress = *progress.borrow_and_update();
+                if view
+                    .update(cx, |this, cx| {
+                        if let Some(FilePreview::Pending(current)) = &mut this.files.preview {
+                            *current = progress;
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             let result = fetch.await;
             let _ = view.update(cx, |this, cx| {
                 this.files.preview_job = None;
@@ -984,7 +1011,7 @@ impl Desktop {
                     )
             }
             Some(FilePreview::Workbook(book)) => self.workbook_preview(book, cx),
-            Some(FilePreview::Pending) => preview_status(Some(tr("正在读取文件…").into())),
+            Some(FilePreview::Pending(progress)) => preview_progress(*progress),
             Some(FilePreview::Binary) => preview_status(Some(tr("此文件类型没有文本预览").into())),
             Some(FilePreview::Failed(error)) => preview_status(Some(error.clone())),
             None => preview_status(None),
@@ -1353,6 +1380,56 @@ fn source_preview(
         .child(scroller)
         .child(Scrollbar::vertical(scroll))
         .child(Scrollbar::horizontal(scroll))
+}
+
+fn preview_progress(progress: PreviewProgress) -> Div {
+    let label = match progress {
+        PreviewProgress::ParsingWorkbook => tr("正在解析工作簿…"),
+        _ => tr("正在读取文件…"),
+    };
+    let (percentage, detail) = match progress {
+        PreviewProgress::Reading { bytes, total } => {
+            use crate::upload_progress::size_label as bytes_label;
+            let received = bytes_label(bytes as u64);
+            match total.filter(|total| *total > 0) {
+                Some(total) => (
+                    Some((bytes as f64 / total as f64 * 100.).min(100.) as f32),
+                    Some(format!("{received} / {}", bytes_label(total))),
+                ),
+                None => (
+                    None,
+                    Some(crate::i18n::format_text!("已读取 {received}", "{received} read")),
+                ),
+            }
+        }
+        _ => (None, None),
+    };
+    preview_status(None).px_4().child(
+        div()
+            .w(px(300.))
+            .max_w_full()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_color(ink(INK))
+                    .child(label)
+                    .children(percentage.map(|value| format!("{}%", value.floor() as u32))),
+            )
+            .child(
+                Progress::new("workspace-preview-progress")
+                    .small()
+                    .color(ink(ACCENT))
+                    .accessibility_label(label)
+                    .value(percentage.unwrap_or_default())
+                    .loading(percentage.is_none()),
+            )
+            .children(detail),
+    )
 }
 
 fn preview_status(status: Option<SharedString>) -> Div {

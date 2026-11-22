@@ -464,7 +464,13 @@ impl Desktop {
             .and_then(|key| self.sessions.get(key));
         let pending = self.model_controls.busy.contains(&self.key());
         let enabled = enabled && !pending;
-        let model_tip = if pending {
+        let status = self.model_switch_status();
+        if let Some(status) = status {
+            model_label = status.to_owned();
+        }
+        let model_tip = if let Some(status) = status {
+            status.to_owned()
+        } else if pending {
             tr("正在应用会话设置").to_owned()
         } else if session.is_some_and(|session| session.next_model.is_some()) {
             tr("下一轮使用此模型").to_owned()

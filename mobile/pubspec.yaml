@@ -1,0 +1,40 @@
+name: hermes_mobile
+description: "Hermes Lite for Android and iOS."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.14.0
+
+dependencies:
+  audioplayers: ^6.8.1
+  crypto: ^3.0.8
+  ffi: ^2.2.0
+  file_selector: ^1.1.0
+  flutter:
+    sdk: flutter
+  flutter_markdown_plus: ^1.0.12
+  flutter_secure_storage: ^11.2.0
+  flutter_webrtc: ^1.6.3
+  hooks: ^2.2.0
+  image_picker: ^1.2.4
+  markdown: ^7.3.1
+  material_ui: ^1.1.0
+  native_toolchain_rust: ^1.1.1
+  path_provider: ^2.1.6
+  record: ^7.2.0
+  share_plus: ^13.3.1
+  unorm_dart: ^0.3.3
+  url_launcher: ^6.3.3
+  uuid: ^4.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  assets:
+    - assets/hermes.webp
+    - assets/wallpapers/
+  uses-material-design: true

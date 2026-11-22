@@ -233,6 +233,7 @@ impl Desktop {
                     },
                     now,
                     entity.downgrade(),
+                    app.reduce_motion(),
                 ),
                 Item::EmptyPins => div()
                     .py_1()

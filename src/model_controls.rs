@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use super::{Call, Desktop, rpc_error};
 use crate::{
     gateway::Gateway,
-    session::string,
+    session::{Session, string},
     settings::{LaunchOptions, ModelChoice, ModelPreference},
 };
 
@@ -147,15 +147,142 @@ pub(super) enum Choice {
 #[derive(Clone, PartialEq, Eq)]
 enum Confirmation {
     Legacy,
-    Authority(String),
+    Authority {
+        token: String,
+        version: Option<(u64, u64)>,
+    },
 }
 
 struct PickPlan {
     id: String,
     choice: Choice,
-    confirmation: Option<Confirmation>,
-    command: Option<(&'static str, Value)>,
+    confirmed: bool,
+    profile: String,
+    runtime: String,
+    command: PickCommand,
+    sent_version: Option<(u64, u64)>,
+    retried: bool,
+    bundled_effort: bool,
     show_receipt: bool,
+}
+
+enum PickCommand {
+    Mutation {
+        operation: &'static str,
+        payload: Value,
+    },
+    Config {
+        key: &'static str,
+        value: String,
+    },
+}
+
+impl PickCommand {
+    fn new(
+        choice: &Choice,
+        canonical: bool,
+        confirmation: Option<&Confirmation>,
+        effort: Option<&str>,
+    ) -> Result<Self> {
+        if let Choice::Speed(value) = choice {
+            return Ok(Self::Config {
+                key: "fast",
+                value: value.clone(),
+            });
+        }
+        if canonical {
+            let (operation, mut payload) = match choice {
+                Choice::Model(model) => {
+                    ("model", json!({"model":model.id,"provider":model.provider}))
+                }
+                Choice::Effort(value) => ("reasoning", json!({"effort":value})),
+                Choice::Speed(_) => unreachable!(),
+            };
+            if let Some(effort) = effort {
+                payload["reasoning"] = json!(effort);
+            }
+            if let Some(Confirmation::Authority { token, .. }) = confirmation {
+                payload["confirm"] = json!(token);
+            }
+            return Ok(Self::Mutation { operation, payload });
+        }
+        let (key, value) =
+            match choice {
+                Choice::Model(model) => {
+                    if model.id.split_whitespace().any(|word| {
+                        word.starts_with("--") || word.starts_with(['‒', '–', '—', '―'])
+                    }) || model.provider.chars().any(char::is_whitespace)
+                    {
+                        anyhow::bail!(tr("网关不支持切换到此模型标识"));
+                    }
+                    (
+                        "model",
+                        format!("{} --provider {} --session", model.id, model.provider),
+                    )
+                }
+                Choice::Effort(value) => ("reasoning", value.clone()),
+                Choice::Speed(_) => unreachable!(),
+            };
+        Ok(Self::Config { key, value })
+    }
+}
+
+impl PickPlan {
+    fn belongs_to(&self, session: &Session) -> bool {
+        session.attached && session.runtime == self.runtime && session.profile == self.profile
+    }
+
+    fn request(
+        &mut self,
+        session: &str,
+        version: Option<(u64, u64)>,
+    ) -> Option<(&'static str, Value)> {
+        let (method, mut params) = match &self.command {
+            PickCommand::Mutation { operation, payload } => {
+                let (revision, generation) = version?;
+                self.sent_version = Some((revision, generation));
+                (
+                    "session.mutate",
+                    json!({"session_id":session,"request_id":self.id,
+                    "expected_revision":revision,"expected_generation":generation,
+                    "operation":operation,"payload":payload}),
+                )
+            }
+            PickCommand::Config { key, value } => {
+                let mut params = json!({"session_id":self.runtime,"key":key,"value":value});
+                if *key != "fast" {
+                    params["scope"] = json!("session");
+                    params["confirm_expensive_model"] = json!(self.confirmed);
+                }
+                ("config.set", params)
+            }
+        };
+        if !self.profile.is_empty() {
+            params["profile"] = json!(self.profile);
+        }
+        Some((method, params))
+    }
+
+    fn retry_version(&mut self, error: &Value) -> bool {
+        let reason = error["data"]["reason"]
+            .as_str()
+            .or_else(|| error["message"].as_str());
+        if self.retried
+            || !matches!(self.command, PickCommand::Mutation { .. })
+            || !matches!(reason, Some("revision_conflict" | "stale_generation"))
+        {
+            return false;
+        }
+        self.retried = true;
+        true
+    }
+}
+
+fn wire_version(value: &Value) -> Option<(u64, u64)> {
+    Some((
+        value["revision"].as_u64()?,
+        value["execution_generation"].as_u64()?,
+    ))
 }
 
 pub(super) struct Prompt {
@@ -849,100 +976,183 @@ impl Desktop {
         if !self.model_controls.busy.insert(key.clone()) {
             return;
         }
-        let runtime_id = session.runtime.clone();
         let profile = session.profile.clone();
-        if let Some(plan) = self.model_controls.plans.get(&key)
-            && plan.choice == choice
-            && plan.confirmation == confirmation
-            && let Some((method, mut params)) = plan.command.clone()
-        {
-            if method == "config.set" {
-                params["session_id"] = json!(runtime_id);
-            }
-            if !self.call(method, params, Call::ModelChange(key.clone())) {
-                self.model_controls.busy.remove(&key);
-            }
-            return;
-        }
-        let request_id = uuid::Uuid::new_v4().to_string();
-        let canonical = self.canonical;
+        let runtime = session.runtime.clone();
+        let version = match &confirmation {
+            Some(Confirmation::Authority {
+                version: Some(version),
+                ..
+            }) => Some(*version),
+            _ => session
+                .revision
+                .map(|revision| (revision, session.generation)),
+        };
+        let canonical = self.canonical && !matches!(choice, Choice::Speed(_));
+        let effort = match &choice {
+            Choice::Model(model) if canonical => self
+                .workspace()
+                .and_then(|workspace| {
+                    workspace
+                        .model_preferences
+                        .get(&preference_key(&profile, model))
+                })
+                .and_then(|pref| pref.effort.clone())
+                .filter(|value| {
+                    matches!(
+                        value.as_str(),
+                        "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+                    )
+                }),
+            _ => None,
+        };
+        let command =
+            match PickCommand::new(&choice, canonical, confirmation.as_ref(), effort.as_deref()) {
+                Ok(command) => command,
+                Err(error) => {
+                    self.model_controls.busy.remove(&key);
+                    self.banner = Some(error.to_string().into());
+                    return;
+                }
+            };
         self.model_controls.plans.insert(
             key.clone(),
             PickPlan {
-                id: request_id.clone(),
-                choice: choice.clone(),
-                confirmation: confirmation.clone(),
-                command: None,
+                id: uuid::Uuid::new_v4().to_string(),
+                choice,
+                confirmed: confirmation.is_some(),
+                profile,
+                runtime,
+                command,
+                sent_version: None,
+                retried: false,
+                bundled_effort: effort.is_some(),
                 show_receipt: false,
             },
         );
-        let job = self.runtime.spawn({
+        self.send_model_setting(&key, version, gateway, cx);
+    }
+
+    pub(super) fn model_switch_status(&self) -> Option<&'static str> {
+        let plan = self.model_controls.plans.get(&self.key())?;
+        if !matches!(plan.choice, Choice::Model(_)) {
+            return None;
+        }
+        Some(if plan.confirmed {
+            tr("正在切换模型…")
+        } else {
+            tr("正在检查模型…")
+        })
+    }
+
+    pub(super) fn clear_model_setting(&mut self, key: &str) {
+        self.model_controls.busy.remove(key);
+        self.model_controls.plans.remove(key);
+        self.cancel_model_preset(key);
+    }
+
+    fn dispatch_model_setting(&mut self, key: &str, method: &'static str, params: Value) {
+        if !self.call(method, params, Call::ModelChange(key.to_owned())) {
+            self.clear_model_setting(key);
+        }
+    }
+
+    fn send_model_setting(
+        &mut self,
+        key: &str,
+        version: Option<(u64, u64)>,
+        gateway: Gateway,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(plan) = self.model_controls.plans.get_mut(key) else {
+            return;
+        };
+        if let Some((method, params)) = plan.request(key, version) {
+            self.dispatch_model_setting(key, method, params);
+            return;
+        }
+        let Some(out) = self.out.clone() else {
+            self.clear_model_setting(key);
+            return;
+        };
+        let id = plan.id.clone();
+        let profile = plan.profile.clone();
+        let key = key.to_owned();
+        let read = self.runtime.spawn({
             let key = key.clone();
-            let request = request_id.clone();
             async move {
-                let speed_change = matches!(&choice, Choice::Speed(_));
-                let mut params = if let Choice::Speed(speed) = &choice {
-                    json!({"session_id":runtime_id,"key":"fast","value":speed})
-                } else if canonical {
-                    let (revision, generation) = gateway.session_version(&key, &profile).await?.context(tr("无法读取会话版本"))?;
-                    let (operation, mut payload) = match choice {
-                        Choice::Model(model) => ("model", json!({"model":model.id, "provider":model.provider})),
-                        Choice::Effort(effort) => ("reasoning", json!({"effort":effort})),
-                        Choice::Speed(_) => unreachable!(),
-                    };
-                    if let Some(Confirmation::Authority(token)) = confirmation { payload["confirm"] = json!(token); }
-                    json!({"session_id":key,"request_id":request,"expected_revision":revision,"expected_generation":generation,
-                       "operation":operation,"payload":payload})
-                } else {
-                    let (key, value) = match choice {
-                        Choice::Model(model) => {
-                            if model.id.split_whitespace().any(|word| word.starts_with("--") ||
-                                word.starts_with(['‒','–','—','―'])) || model.provider.chars().any(char::is_whitespace) {
-                                anyhow::bail!(tr("网关不支持切换到此模型标识"));
-                            }
-                            ("model",format!("{} --provider {} --session",model.id,model.provider))
-                        }
-                        Choice::Effort(effort) => ("reasoning",effort),
-                        Choice::Speed(_) => unreachable!(),
-                    };
-                    json!({"session_id":runtime_id,"key":key,"value":value,"scope":"session",
-                        "confirm_expensive_model":confirmation==Some(Confirmation::Legacy)})
-                };
-                if !profile.is_empty() { params["profile"] = json!(profile); }
-                Ok::<_, anyhow::Error>((if canonical && !speed_change { "session.mutate" } else { "config.set" }, params))
+                gateway
+                    .session_version(&key, &profile)
+                    .await?
+                    .context(tr("无法读取会话版本"))
             }
         });
         cx.spawn(async move |view, cx| {
-            let result = job
+            let result = read
                 .await
                 .context(tr("无法准备会话模型切换"))
-                .and_then(|result| result);
+                .and_then(|value| value);
             let _ = view.update(cx, |this, cx| {
                 let Some(plan) = this
                     .model_controls
                     .plans
                     .get_mut(&key)
-                    .filter(|plan| plan.id == request_id)
+                    .filter(|plan| plan.id == id)
                 else {
                     return;
                 };
-                match result {
-                    Ok((method, params)) => {
-                        plan.command = Some((method, params.clone()));
-                        if !this.call(method, params, Call::ModelChange(key.clone())) {
-                            this.model_controls.busy.remove(&key);
+                if !this
+                    .out
+                    .as_ref()
+                    .is_some_and(|current| current.same_channel(&out))
+                    || !this
+                        .sessions
+                        .get(&key)
+                        .is_some_and(|session| plan.belongs_to(session))
+                {
+                    this.clear_model_setting(&key);
+                } else {
+                    match result {
+                        Ok(version) => {
+                            let (method, params) = plan
+                                .request(&key, Some(version))
+                                .expect("version provides mutation fences");
+                            this.dispatch_model_setting(&key, method, params);
                         }
-                    }
-                    Err(error) => {
-                        this.model_controls.plans.remove(&key);
-                        this.model_controls.busy.remove(&key);
-                        this.banner = Some(error.to_string().into());
+                        Err(error) => {
+                            this.clear_model_setting(&key);
+                            this.banner = Some(error.to_string().into());
+                        }
                     }
                 }
                 cx.notify();
             });
         })
         .detach();
+    }
+
+    fn retry_model_setting(&mut self, key: &str, error: &Value, cx: &mut Context<Self>) -> bool {
+        let Some(gateway) = self
+            .gateway
+            .clone()
+            .filter(|_| self.canonical && self.out.is_some())
+        else {
+            return false;
+        };
+        let Some(plan) = self.model_controls.plans.get_mut(key) else {
+            return false;
+        };
+        if !self
+            .sessions
+            .get(key)
+            .is_some_and(|session| plan.belongs_to(session))
+        {
+            return false;
+        }
+        if !plan.retry_version(error) {
+            return false;
+        }
+        self.send_model_setting(key, wire_version(&error["data"]), gateway, cx);
+        true
     }
 
     pub(super) fn finish_model_setting(
@@ -952,10 +1162,23 @@ impl Desktop {
         error: Option<&Value>,
         cx: &mut Context<Self>,
     ) {
+        if let Some(error) = error
+            && self.retry_model_setting(&key, error, cx)
+        {
+            return;
+        }
         self.model_controls.busy.remove(&key);
         let Some(plan) = self.model_controls.plans.remove(&key) else {
             return;
         };
+        if !self
+            .sessions
+            .get(&key)
+            .is_some_and(|session| plan.belongs_to(session))
+        {
+            self.cancel_model_preset(&key);
+            return;
+        }
         if let Some(error) = error {
             self.cancel_model_preset(&key);
             self.banner = Some(rpc_error(error).into());
@@ -965,7 +1188,10 @@ impl Desktop {
             let confirmation = result["confirm"]
                 .as_str()
                 .filter(|token| !token.is_empty())
-                .map(|token| Confirmation::Authority(token.to_owned()))
+                .map(|token| Confirmation::Authority {
+                    token: token.to_owned(),
+                    version: plan.sent_version,
+                })
                 .unwrap_or(Confirmation::Legacy);
             let message = result["confirm_message"]
                 .as_str()
@@ -984,6 +1210,13 @@ impl Desktop {
         let Some(session) = self.sessions.get_mut(&key) else {
             return;
         };
+        if matches!(plan.command, PickCommand::Mutation { .. })
+            && let Some((revision, generation)) = wire_version(result)
+            && generation == session.generation
+            && session.revision.is_none_or(|current| revision >= current)
+        {
+            session.revision = Some(revision);
+        }
         let deferred = result["deferred"] == true || result["status"] == "deferred";
         let mut model_pick = None;
         let mut preference_update = None;
@@ -1009,6 +1242,13 @@ impl Desktop {
                     }
                     session.update_model(applied);
                     session.next_model = None;
+                    if plan.bundled_effort
+                        && let Some(effort) = result["effort"].as_str()
+                        && session.effort.as_ref() != effort
+                    {
+                        session.effort = effort.to_owned().into();
+                        session.effort_on_wire = SharedString::default();
+                    }
                 }
             }
             Choice::Effort(effort) => {
@@ -1059,7 +1299,9 @@ impl Desktop {
                 .cloned()
                 .unwrap_or_default();
             let queue = [
-                pref.effort.map(Choice::Effort),
+                pref.effort
+                    .filter(|_| !plan.bundled_effort)
+                    .map(Choice::Effort),
                 pref.speed.map(Choice::Speed),
             ]
             .into_iter()
@@ -1164,6 +1406,74 @@ mod tests {
             panic!("expected a loaded menu");
         };
         &catalog.models[0].choice.id
+    }
+
+    fn model_plan(canonical: bool, confirmation: Option<&Confirmation>) -> PickPlan {
+        let choice = Choice::Model(ModelChoice {
+            id: "gpt-6.2-astra-900k".into(),
+            provider: "openai-codex".into(),
+        });
+        let effort = canonical.then_some("high");
+        let command = PickCommand::new(&choice, canonical, confirmation, effort).unwrap();
+        PickPlan {
+            id: "pick-1".into(),
+            choice,
+            confirmed: confirmation.is_some(),
+            profile: "work".into(),
+            runtime: "live".into(),
+            command,
+            sent_version: None,
+            retried: false,
+            bundled_effort: effort.is_some(),
+            show_receipt: false,
+        }
+    }
+
+    #[test]
+    fn model_confirmation_uses_the_preview_version_and_bundles_reasoning() {
+        let mut preview = model_plan(true, None);
+        let (method, request) = preview.request("stored", Some((12, 3))).unwrap();
+        assert_eq!(method, "session.mutate");
+        assert_eq!(request["profile"], "work");
+        assert_eq!(request["session_id"], "stored");
+        assert_eq!(request["expected_revision"], 12);
+        assert_eq!(request["payload"]["reasoning"], "high");
+        assert!(request["payload"].get("confirm").is_none());
+
+        let confirmation = Confirmation::Authority {
+            token: "gateway-token".into(),
+            version: preview.sent_version,
+        };
+        let mut confirmed = model_plan(true, Some(&confirmation));
+        let (_, request) = confirmed.request("stored", preview.sent_version).unwrap();
+        assert_eq!(request["expected_revision"], 12);
+        assert_eq!(request["expected_generation"], 3);
+        assert_eq!(request["payload"]["confirm"], "gateway-token");
+
+        let mut old_gateway = model_plan(false, Some(&Confirmation::Legacy));
+        let (method, request) = old_gateway.request("stored", None).unwrap();
+        assert_eq!(method, "config.set");
+        assert_eq!(request["session_id"], "live");
+        assert_eq!(request["confirm_expensive_model"], true);
+    }
+
+    #[test]
+    fn stale_version_retries_the_same_pick_once_with_gateway_fences() {
+        let mut plan = model_plan(true, None);
+        assert!(plan.request("stored", None).is_none());
+        let (_, first) = plan.request("stored", Some((12, 3))).unwrap();
+        assert!(!plan.retry_version(&json!({"message":"model_resolution_failed"})));
+        let stale =
+            json!({"data":{"reason":"revision_conflict","revision":13,"execution_generation":4}});
+        assert!(plan.retry_version(&stale));
+        let (_, retry) = plan
+            .request("stored", wire_version(&stale["data"]))
+            .unwrap();
+        assert_eq!(retry["expected_revision"], 13);
+        assert_eq!(retry["expected_generation"], 4);
+        assert_eq!(retry["request_id"], first["request_id"]);
+        assert_eq!(retry["payload"], first["payload"]);
+        assert!(!plan.retry_version(&stale));
     }
 
     #[test]

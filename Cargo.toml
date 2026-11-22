@@ -9,9 +9,14 @@ license = "MIT"
 repository = "https://github.com/hejuntt1014/hermes-desktop-lite"
 
 [dependencies]
+hermes-client-core = { path = "crates/hermes-client-core" }
 base64 = "0.22"
 calamine = { version = "0.38", features = ["chrono"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+cpal = "0.16"
+ogg = "0.9"
+opus = { package = "opus2", version = "0.4", default-features = false, features = ["backend-mousiki"] }
+rodio = { version = "0.21", default-features = false, features = ["playback", "mp3", "wav", "vorbis", "flac"] }
 sha2 = "0.11"
 anyhow = "1"
 dirs = "6"
@@ -25,7 +30,7 @@ keyring = { version = "3", features = ["windows-native", "apple-native", "linux-
 markdown = "1"
 percent-encoding = "2"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sys-locale = "0.3.2"
@@ -42,6 +47,7 @@ x11rb = "0.13"
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.12", features = ["wayland", "x11"] }
 
 [target.'cfg(windows)'.dependencies]
+libwebrtc = "=0.3.55"
 jsonc-parser = { version = "0.34", features = ["serde"] }
 windows = { version = "0.61.3", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation"] }
 winreg = "0.56"
@@ -57,3 +63,7 @@ windows-sys = { version = "0.61", features = [
 
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3.0.12"
+
+[target.'cfg(not(windows))'.dependencies]
+sonora = "0.3"
+webrtc = "0.14"

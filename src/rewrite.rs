@@ -1033,7 +1033,7 @@ async fn prepare_pictures(
             }
         }
         let filename = format!("image-{}.{}", digests.len(), image.extension);
-        let uploaded = upload_chat_image(&gateway, profile, &filename, &image.data_url)
+        let uploaded = upload_chat_image(&gateway, profile, &filename, &image.data_url, None)
             .await
             .with_context(|| {
                 crate::i18n::format_text!("暂存 {name} 失败", "Could not stage {name}")

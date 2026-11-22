@@ -105,7 +105,7 @@ impl Desktop {
                                 .map(|(p, n)| (p.to_owned(), n.to_owned(), None)),
                         );
                     } else {
-                        paths.extend(reply_files(m.display()).into_iter().filter_map(|part| {
+                        paths.extend(reply_files(m.display(), true).into_iter().filter_map(|part| {
                             match part {
                                 ReplyPart::File { path, label } => {
                                     Some((path.to_owned(), label.to_owned(), None))

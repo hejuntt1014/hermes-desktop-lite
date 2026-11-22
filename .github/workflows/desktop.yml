@@ -2,7 +2,9 @@ name: Desktop builds
 
 on:
   push:
+    paths-ignore: ['mobile/**', '.github/workflows/mobile.yml']
   pull_request:
+    paths-ignore: ['mobile/**', '.github/workflows/mobile.yml']
   workflow_dispatch:
 
 permissions:
@@ -36,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config cmake clang libfontconfig1-dev \
-            libfreetype6-dev libglib2.0-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev
+            libfreetype6-dev libglib2.0-dev libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev libasound2-dev
       - name: Select Xcode
         if: runner.os == 'macOS'
         run: |
@@ -64,7 +66,8 @@ jobs:
           $notices = @(
             'LICENSE', 'THIRD_PARTY_NOTICES.md', 'assets/tabler/LICENSE',
             'assets/codicon/LICENSE', 'assets/codicon/NOTICE',
-            'assets/phosphor/LICENSE', 'assets/fonts/OFL-BodoniModa.txt'
+            'assets/phosphor/LICENSE', 'assets/fonts/OFL-BodoniModa.txt',
+            'assets/voice/LICENSE-livekit', 'assets/voice/LICENSE-webrtc.md'
           )
           $gap = [Environment]::NewLine + [Environment]::NewLine
           $sections = foreach ($path in $notices) {

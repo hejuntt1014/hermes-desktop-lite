@@ -157,6 +157,9 @@ impl Desktop {
                 this.profiles.serving = serving;
                 this.sync_profile_editor(window, cx);
                 this.sync_tab_sidebar(window, cx);
+                if serving_changed {
+                    this.refresh_busy_input(cx);
+                }
                 if serving_changed
                     && this.workspace().is_some_and(|workspace| {
                         workspace

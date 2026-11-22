@@ -229,6 +229,7 @@ impl Desktop {
     pub(super) fn refresh_selection_status(&mut self, cx: &mut Context<Self>) {
         let profile = self.model_profile();
         self.approval_status.open = false;
+        self.refresh_busy_input(cx);
         if !self.approval_status.modes.contains_key(&profile) {
             self.read_approval_mode(None);
         }

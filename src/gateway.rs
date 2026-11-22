@@ -59,6 +59,20 @@ pub(crate) fn missing_history_endpoint(error: &anyhow::Error) -> bool {
         .is_some_and(HttpFailure::missing_endpoint)
 }
 
+pub(crate) fn managed_upload_unavailable(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<HttpFailure>().is_some_and(|failure| matches!(
+        failure.status,
+        StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED | StatusCode::NOT_IMPLEMENTED | StatusCode::PAYLOAD_TOO_LARGE
+    ))
+}
+
+pub(crate) fn missing_stored_session(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<HttpFailure>().is_some_and(|failure| {
+        failure.status == StatusCode::NOT_FOUND
+            && matches!(failure.reason.as_deref(), Some("Session not found" | "not_found"))
+    })
+}
+
 impl HttpFailure {
     fn missing_endpoint(&self) -> bool {
         self.status == StatusCode::NOT_FOUND
@@ -205,6 +219,20 @@ impl Gateway {
         params: &[(&str, String)],
         body: Option<Value>,
     ) -> Result<reqwest::Response> {
+        self.api_request_builder(method, path, params, body)
+            .await?
+            .send()
+            .await
+            .map_err(|error| error.without_url().into())
+    }
+
+    pub(crate) async fn api_request_builder(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        params: &[(&str, String)],
+        body: Option<Value>,
+    ) -> Result<reqwest::RequestBuilder> {
         let request = self.http.request(method, self.endpoint(path)).query(params);
         let profile = params
             .iter()
@@ -214,8 +242,7 @@ impl Gateway {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request.send().await.map_err(|e| e.without_url())?;
-        Ok(response)
+        Ok(request)
     }
 
     async fn authorize(
@@ -237,13 +264,12 @@ impl Gateway {
         }
     }
 
-    pub(crate) async fn save_workspace_file(
+    async fn workspace_file_response(
         &self,
         path: &str,
         session: &str,
         profile: &str,
-        destination: PathBuf,
-    ) -> Result<()> {
+    ) -> Result<reqwest::Response> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(TIMEOUT)
@@ -257,12 +283,22 @@ impl Gateway {
             query.push(("profile", profile));
         }
         let request = client.get(self.endpoint("api/fs/download")).query(&query);
-        let mut response = self
+        self
             .authorize(request, Some(profile))
             .await?
             .send()
             .await
-            .map_err(|error| error.without_url())?;
+            .map_err(|error| error.without_url().into())
+    }
+
+    pub(crate) async fn save_workspace_file(
+        &self,
+        path: &str,
+        session: &str,
+        profile: &str,
+        destination: PathBuf,
+    ) -> Result<()> {
+        let mut response = self.workspace_file_response(path, session, profile).await?;
         if response.status() != StatusCode::OK {
             bail!(crate::i18n::format_text!(
                 "下载失败（HTTP {}）",
@@ -314,17 +350,9 @@ impl Gateway {
         session: &str,
         profile: &str,
         limit: usize,
+        mut progress: impl FnMut(usize, Option<u64>),
     ) -> Result<Vec<u8>> {
-        let mut query = vec![("path", path.to_owned())];
-        if !session.is_empty() {
-            query.push(("session_id", session.to_owned()));
-        }
-        if !profile.is_empty() {
-            query.push(("profile", profile.to_owned()));
-        }
-        let mut response = self
-            .api_request(reqwest::Method::GET, "api/fs/download", &query, None)
-            .await?;
+        let mut response = self.workspace_file_response(path, session, profile).await?;
         if response.status() != StatusCode::OK {
             bail!(crate::i18n::format_text!(
                 "无法读取文件（HTTP {}）",
@@ -336,16 +364,29 @@ impl Gateway {
         if declared.is_some_and(|size| size > limit as u64) {
             bail!(tr("此文件超过预览大小限制，请下载查看"));
         }
+        progress(0, declared);
+        let mut last_update = time::Instant::now();
         let mut bytes = Vec::new();
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|error| error.without_url())?
+            .map_err(|error| {
+                let message = if error.is_timeout() {
+                    tr("读取文件超时，请重试")
+                } else {
+                    tr("文件未完整读取，请重试")
+                };
+                anyhow::Error::new(error.without_url()).context(message)
+            })?
         {
             if chunk.len() > limit - bytes.len() {
                 bail!(tr("此文件超过预览大小限制，请下载查看"));
             }
             bytes.extend_from_slice(&chunk);
+            if last_update.elapsed() >= Duration::from_millis(100) {
+                progress(bytes.len(), declared);
+                last_update = time::Instant::now();
+            }
         }
         if declared.is_some_and(|size| size != bytes.len() as u64) {
             bail!(tr("文件未完整读取，请重试"));
@@ -402,7 +443,7 @@ impl Gateway {
         Self::api_response(response).await
     }
 
-    async fn api_response(response: reqwest::Response) -> Result<Value> {
+    pub(crate) async fn api_response(response: reqwest::Response) -> Result<Value> {
         if !response.status().is_success() {
             let status = response.status();
             let reason = response.json::<Value>().await.ok().and_then(|body| {
@@ -612,14 +653,26 @@ impl Gateway {
         profile: &str,
         offset: usize,
     ) -> Result<HistoryPage> {
-        const PAGE_SIZE: usize = 80;
+        self.history_page(id, profile, offset, 80).await
+    }
+
+    pub async fn history_page(
+        &self,
+        id: &str,
+        profile: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<HistoryPage> {
         let path = format!("api/sessions/{}/messages", crate::encode_path(id));
         let mut query = vec![
-            ("limit", PAGE_SIZE.to_string()),
+            ("limit", limit.to_string()),
             ("offset", offset.to_string()),
             ("order", "latest".to_owned()),
             ("include_compacted", "true".to_owned()),
         ];
+        if limit == 1 {
+            query.push(("inline_images", "false".to_owned()));
+        }
         if !profile.is_empty() {
             query.push(("profile", profile.to_owned()));
         }
@@ -1086,6 +1139,7 @@ impl Gateway {
             }
         }
 
+        let (mut writer, mut reader) = socket.split();
         let mut interval = time::interval_at(time::Instant::now() + TIMEOUT, TIMEOUT);
         let mut last_frame = time::Instant::now();
         let mut deadlines = BTreeMap::new();
@@ -1095,32 +1149,62 @@ impl Gateway {
                     let Some(Outgoing { message: frame, attachment }) = cmd else { return Ok(false) };
                     if let Some(file) = attachment {
                         let id = frame["id"].as_u64().context("file.attach request ID is missing")?;
-                        crate::file_upload::send(&mut socket, id, &frame["params"], file).await?;
+                        let crate::file_upload::Attachment { file, total, mut progress, cancel } = file;
+                        if cancel.is_cancelled() {
+                            if tx.send(Update::AttachmentCancelled(id)).is_err() { return Ok(false); }
+                            continue;
+                        }
+                        let (upload_acks, ack) = tokio::sync::watch::channel(0);
+                        let upload = crate::file_upload::send(&mut writer, id, &frame["params"], file, Some(ack), |sent, finished| {
+                            if finished { progress.awaiting(sent); } else { progress.sending(sent, total); }
+                        });
+                        tokio::pin!(upload);
+                        // The reader must keep polling during a fragmented message so tungstenite
+                        // can answer WebSocket pings and dispatch replies on the same connection.
+                        loop {
+                            tokio::select! {
+                                biased;
+                                // Dropping the connection discards the unfinished WebSocket message.
+                                // The next connection resumes the session without that attachment.
+                                _ = cancel.cancelled() => return Ok(true),
+                                result = &mut upload => { result?; break; }
+                                received = reader.next() => match received.transpose()? {
+                                    Some(Message::Text(text)) => {
+                                        if !forward_ws_text(&text, tx, &mut deadlines) {
+                                            return Ok(false);
+                                        }
+                                    }
+                                    Some(Message::Pong(token)) => {
+                                        if let Some(offset) = crate::file_upload::upload_ack(id, &token) {
+                                            upload_acks.send_replace(offset);
+                                        }
+                                    }
+                                    Some(Message::Close(_)) | None => return Ok(true),
+                                    _ => {}
+                                }
+                            }
+                        }
                         // A streamed transfer may take longer than the idle threshold.
                         last_frame = time::Instant::now();
                     } else {
-                        time::timeout(TIMEOUT, socket.send(Message::Text(frame.to_string().into()))).await??;
+                        time::timeout(TIMEOUT, writer.send(Message::Text(frame.to_string().into()))).await??;
                     }
                     if let Some(id) = frame["id"].as_u64().filter(|_| frame["method"].is_string()) {
                         let seconds = if matches!(frame["method"].as_str(), Some("approval.respond" | "clarify.respond")) { 300 } else { 120 };
                         deadlines.insert(id, time::Instant::now() + Duration::from_secs(seconds));
                     }
                 }
-                frame = socket.next() => {
+                frame = reader.next() => {
                     let Some(frame) = frame else { return Ok(true) };
                     last_frame = time::Instant::now();
                     match frame? {
                         Message::Text(text) => {
-                            let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
-                            if let Some(id) = value["id"].as_u64().filter(|_| value["method"].is_null()) {
-                                deadlines.remove(&id);
-                            }
-                            if tx.send(Update::Frame(value)).is_err() {
+                            if !forward_ws_text(&text, tx, &mut deadlines) {
                                 return Ok(false);
                             }
                         }
                         Message::Close(_) => return Ok(true),
-                        Message::Ping(_) => socket.flush().await?,
+                        Message::Ping(_) => writer.flush().await?,
                         _ => {}
                     }
                 }
@@ -1130,9 +1214,9 @@ impl Gateway {
                     }
                     if heartbeat {
                         let ping = json!({"jsonrpc":"2.0","id":"lite-heartbeat","method":"gateway.ping","params":{}});
-                        time::timeout(TIMEOUT, socket.send(Message::Text(ping.to_string().into()))).await??;
+                        time::timeout(TIMEOUT, writer.send(Message::Text(ping.to_string().into()))).await??;
                     } else {
-                        socket.send(Message::Ping(Vec::new().into())).await?;
+                        writer.send(Message::Ping(Vec::new().into())).await?;
                     }
                     let now = time::Instant::now();
                     deadlines.retain(|id, deadline| {
@@ -1144,6 +1228,20 @@ impl Gateway {
             }
         }
     }
+}
+
+fn forward_ws_text(
+    text: &str,
+    tx: &mpsc::UnboundedSender<Update>,
+    deadlines: &mut BTreeMap<u64, time::Instant>,
+) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return true;
+    };
+    if let Some(id) = value["id"].as_u64().filter(|_| value["method"].is_null()) {
+        deadlines.remove(&id);
+    }
+    tx.send(Update::Frame(value)).is_ok()
 }
 
 pub struct SessionPage {
@@ -1159,7 +1257,7 @@ pub struct HistoryPage {
 
 pub struct Outgoing {
     pub message: Value,
-    pub attachment: Option<tokio::fs::File>,
+    pub attachment: Option<crate::file_upload::Attachment>,
 }
 
 impl From<Value> for Outgoing {
@@ -1186,6 +1284,7 @@ pub enum Update {
     },
     Frame(Value),
     Timeout(u64),
+    AttachmentCancelled(u64),
 }
 
 pub struct Connection {

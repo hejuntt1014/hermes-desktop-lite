@@ -1,12 +1,34 @@
 use crate::i18n::text as tr;
 
-use std::ops::Range;
+use std::{cell::Cell, ops::Range, rc::Rc};
 
-use gpui::SharedString;
+use gpui::{Bounds, ListOffset, ListState, Pixels, Point, SharedString, Size, point, px};
+use gpui_component::scroll::ScrollbarHandle;
 
 use super::attachment_ops::display_file_refs;
 
 use crate::session::{Row, Session, Tool, compact_preview};
+
+impl super::Desktop {
+    pub(super) fn apply_transcript_scrollbar(&mut self, cx: &mut gpui::Context<Self>) {
+        let Some(end) = self.transcript_scrollbar.take_navigation() else {
+            return;
+        };
+        let dragging = self.transcript_scrollbar.dragging();
+        self.cancel_search_reveal();
+        self.following = end && !dragging;
+        self.pending_reading = None;
+        self.pending_bookmark = None;
+        self.turn_rail.jumped = None;
+        if !dragging {
+            self.reading_moved(cx);
+            if self.list.logical_scroll_top().item_ix <= 3 {
+                self.older_history(cx);
+            }
+        }
+        self.sync_turn_rail();
+    }
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct TimelineItem {
@@ -18,13 +40,143 @@ pub(super) fn at_bottom(list: &gpui::ListState) -> bool {
     let top = list.logical_scroll_top().item_ix;
     let count = list.item_count();
     let viewport = list.viewport_bounds();
-    // Unmeasured rows count as zero pixels in scrollbar estimates.
+    // Unmeasured rows can make a pixel-based scrollbar report the end early.
     count > 0
         && viewport.size.height > gpui::px(0.)
         && (top..count).all(|ix| {
             list.bounds_for_item(ix)
                 .is_some_and(|bounds| bounds.bottom() <= viewport.bottom() + gpui::px(1.))
         })
+}
+
+const ROW_STEP: f32 = 56.;
+
+#[derive(Clone)]
+pub(super) struct TranscriptScrollbar {
+    list: ListState,
+    drag: Rc<Cell<Option<Drag>>>,
+    navigation: Rc<Cell<Option<bool>>>,
+}
+
+#[derive(Clone, Copy)]
+struct Drag {
+    count: usize,
+    position: Pixels,
+}
+
+impl TranscriptScrollbar {
+    pub(super) fn new(list: ListState) -> Self {
+        Self {
+            list,
+            drag: Default::default(),
+            navigation: Default::default(),
+        }
+    }
+
+    pub(super) fn dragging(&self) -> bool {
+        self.drag.get().is_some()
+    }
+
+    pub(super) fn reset(&self) {
+        self.drag.set(None);
+        self.navigation.set(None);
+    }
+
+    pub(super) fn has_navigation(&self) -> bool {
+        self.navigation.get().is_some()
+    }
+
+    pub(super) fn take_navigation(&self) -> Option<bool> {
+        self.navigation.take()
+    }
+
+    fn track_end(&self) -> Pixels {
+        if let Some(drag) = self.drag.get() {
+            return px(drag.count as f32 * ROW_STEP);
+        }
+        let count = self.list.item_count();
+        let top = self.list.logical_scroll_top();
+        if top.item_ix == 0 && top.offset_in_item == px(0.) && at_bottom(&self.list) {
+            return px(0.);
+        }
+        px(count as f32 * ROW_STEP)
+    }
+
+    fn row_extent(&self, item: usize) -> Pixels {
+        self.list
+            .bounds_for_item(item)
+            .map_or(px(ROW_STEP), |bounds| bounds.size.height)
+            .max(px(1.))
+    }
+}
+
+impl ScrollbarHandle for TranscriptScrollbar {
+    fn viewport_bounds(&self) -> Bounds<Pixels> {
+        self.list.viewport_bounds()
+    }
+
+    fn content_size(&self) -> Size<Pixels> {
+        let mut size = self.viewport_bounds().size;
+        size.height += self.track_end();
+        size
+    }
+
+    fn offset(&self) -> Point<Pixels> {
+        if let Some(drag) = self.drag.get() {
+            return point(px(0.), -drag.position);
+        }
+        let max = self.track_end();
+        let top = self.list.logical_scroll_top();
+        let position = if at_bottom(&self.list) {
+            max
+        } else {
+            let within = (top.offset_in_item / self.row_extent(top.item_ix)).clamp(0., 1.);
+            px((top.item_ix as f32 + within) * ROW_STEP).min(max)
+        };
+        point(px(0.), -position)
+    }
+
+    fn set_offset(&self, offset: Point<Pixels>) {
+        let max = self.track_end();
+        let position = (-offset.y).clamp(px(0.), max);
+        if let Some(mut drag) = self.drag.get() {
+            if drag.position == position {
+                return;
+            }
+            drag.position = position;
+            self.drag.set(Some(drag));
+        }
+        let end = max > px(0.) && position >= max - px(0.5);
+        if end {
+            self.list.scroll_to_end();
+        } else {
+            // GPUI's pixel seek crosses a different number of rows as images and
+            // offscreen messages are measured. The track uses logical row slots.
+            let slot = f32::from(position) / ROW_STEP;
+            let item_ix = slot.floor() as usize;
+            self.list.scroll_to(ListOffset {
+                item_ix,
+                offset_in_item: self.row_extent(item_ix) * slot.fract(),
+            });
+        }
+        self.navigation.set(Some(end));
+    }
+
+    fn start_drag(&self) {
+        self.drag.set(Some(Drag {
+            count: self.list.item_count(),
+            position: -self.offset().y,
+        }));
+        self.navigation.set(Some(false));
+    }
+
+    fn end_drag(&self) {
+        if let Some(drag) = self.drag.take() {
+            self.navigation.set(Some(
+                drag.position >= px(drag.count as f32 * ROW_STEP - 0.5),
+            ));
+        }
+    }
 }
 
 pub(super) struct ScrollNavigation {

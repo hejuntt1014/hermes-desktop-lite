@@ -1,0 +1,4 @@
+"NSPhotoLibraryUsageDescription" = "选取照片作为消息附件。";
+"NSCameraUsageDescription" = "拍摄照片作为消息附件。";
+"NSMicrophoneUsageDescription" = "录制语音并转写到消息草稿。";
+"NSLocalNetworkUsageDescription" = "连接本地网络中的 Hermes 网关。";

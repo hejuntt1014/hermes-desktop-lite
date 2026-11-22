@@ -59,7 +59,9 @@ impl Desktop {
     }
 
     pub(super) fn reading_moved(&mut self, cx: &mut Context<Self>) {
+        self.cancel_search_reveal();
         self.pending_reading = None;
+        self.pending_bookmark = None;
         if self.remember_reading() {
             self.schedule_save(cx);
         }

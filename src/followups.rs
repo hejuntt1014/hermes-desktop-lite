@@ -43,6 +43,102 @@ pub(super) struct QueueEditor {
 }
 
 impl Desktop {
+    pub(super) fn route_busy_text(
+        &mut self,
+        key: String,
+        runtime: String,
+        generation: u64,
+        mut prepared: Prepared,
+        mode: super::busy_input::BusyInputMode,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) = self.sessions.get_mut(&key) else {
+            return;
+        };
+        session.submitting = false;
+        let method = mode.correction();
+        if !session.attached || session.loading || session.uncertain {
+            return;
+        }
+        if let Some(method) = method.filter(|_| {
+            session.running
+                && session.prompts.is_empty()
+                && session.runtime == runtime
+                && session.generation == generation
+        }) {
+            let params = json!({"session_id": runtime, "profile": session.profile,
+                "execution_generation": generation, "text": prepared.text});
+            session.submitting = true;
+            // Correction RPCs have no submission ID. A lost acknowledgement cannot be retried safely.
+            prepared.legacy = true;
+            self.workspace_mut()
+                .pending_submissions
+                .insert(key.clone(), prepared.clone());
+            if let Err(error) = self.settings.save() {
+                self.workspace_mut().pending_submissions.remove(&key);
+                self.attachment_failed(&key, error.to_string());
+                return;
+            }
+            if !self.call(
+                method,
+                params,
+                super::Call::CorrectTurn(key.clone(), prepared.clone()),
+            ) {
+                self.lost(super::Call::CorrectTurn(key, prepared), false);
+            }
+        } else {
+            prepared.queued = session.running;
+            self.submit(key, prepared, cx);
+        }
+    }
+
+    pub(super) fn finish_busy_text(
+        &mut self,
+        key: String,
+        mut prepared: Prepared,
+        response: &Value,
+        error: Option<&Value>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) = self.sessions.get_mut(&key) else {
+            return;
+        };
+        session.submitting = false;
+        let refused = error.is_some_and(|err| {
+            matches!(
+                err["data"]["reason"].as_str(),
+                Some("execution_not_ready" | "unsupported_control" | "stale_generation")
+            )
+        }) || error.is_none()
+            && response["status"] == "rejected"
+            && response["delivered"] == false;
+        if refused {
+            prepared.legacy = false;
+            prepared.queued = true;
+            self.submit(key, prepared, cx);
+        } else if error.is_none()
+            && (response["voice_stopped"] == true
+                || matches!(
+                    response["status"].as_str(),
+                    Some("redirected" | "queued" | "steered")
+                ))
+        {
+            if session.running && response["voice_stopped"] != true {
+                session.accept_correction(&prepared.text);
+            }
+            self.accept_draft(&key, window, cx);
+            self.attach(&key, true);
+        } else {
+            session.uncertain = true;
+            session.error = Some(
+                error
+                    .map(super::rpc_error)
+                    .unwrap_or_else(|| tr("未收到发送确认").into()),
+            );
+        }
+    }
+
     pub(super) fn has_followups(&self, key: &str) -> bool {
         self.workspace().is_some_and(|workspace| {
             workspace

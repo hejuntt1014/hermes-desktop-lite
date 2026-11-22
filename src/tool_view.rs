@@ -270,6 +270,7 @@ fn tool_title(tool: &Tool) -> SharedString {
     let label = match tool.name.as_ref() {
         "terminal" | "execute_code" if tool.done => tr("已运行"),
         "terminal" | "execute_code" => tr("正在运行"),
+        "skill_view" if tool.failed => tr("技能加载失败"),
         "skill_view" if tool.done => tr("已加载技能"),
         "skill_view" => tr("正在加载技能"),
         "vision_analyze" if tool.done => tr("已分析图片"),

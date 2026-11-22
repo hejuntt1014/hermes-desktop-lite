@@ -232,21 +232,28 @@ impl Tool {
         let image = (name == "image_generate" && done)
             .then(|| ChatImage::from_tool_result(&output))
             .flatten();
+        let args = ["args", "args_text", "arguments"]
+            .into_iter()
+            .map(|field| text(&value[field]))
+            .find(|value| !value.is_empty())
+            .unwrap_or_default();
+        let context = if name == "skill_view" {
+            skill_target(&args).or_else(|| skill_target(&output))
+        } else {
+            None
+        };
         Self {
             id: id.to_owned(),
             name: name.to_owned().into(),
-            context: value["context"]
-                .as_str()
-                .or_else(|| value["summary"].as_str())
-                .unwrap_or_default()
-                .to_owned()
-                .into(),
-            args: ["args", "args_text", "arguments"]
-                .into_iter()
-                .map(|field| text(&value[field]))
-                .find(|value| !value.is_empty())
-                .unwrap_or_default()
-                .into(),
+            context: context.unwrap_or_else(|| {
+                value["context"]
+                    .as_str()
+                    .or_else(|| value["summary"].as_str())
+                    .unwrap_or_default()
+                    .to_owned()
+                    .into()
+            }),
+            args: args.into(),
             done,
             failed: tool_failed(&value["result"]) || check_tool_output(&output),
             output: output.into(),
@@ -280,8 +287,32 @@ impl Tool {
         if self.name.as_ref() == "image_generate" {
             self.image = ChatImage::from_tool_result(&output);
         }
+        if self.name.as_ref() == "skill_view"
+            && self.context.is_empty()
+            && let Some(target) = skill_target(&output)
+        {
+            self.context = target;
+        }
         self.output = output;
     }
+}
+
+fn skill_target(json: &str) -> Option<SharedString> {
+    #[derive(serde::Deserialize)]
+    struct Target {
+        name: String,
+        #[serde(alias = "file")]
+        file_path: Option<String>,
+    }
+    let target: Target = serde_json::from_str(json).ok()?;
+    let name = target.name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(match target.file_path.as_deref().map(str::trim) {
+        Some(file) if !file.is_empty() => format!("{name} → {file}").into(),
+        _ => name.to_owned().into(),
+    })
 }
 
 fn check_tool_output(output: &str) -> bool {
@@ -395,6 +426,11 @@ impl Prompt {
 
 #[derive(Default)]
 pub struct Session {
+    pub(crate) upload: Option<crate::upload_progress::Display>,
+    pub(super) uploading_draft_file: Option<std::path::PathBuf>,
+    pub(super) staged_draft_files: HashMap<std::path::PathBuf, String>,
+    pub(super) draft_upload_errors: HashMap<std::path::PathBuf, String>,
+    pub(super) waiting_for_draft_upload: bool,
     pub runtime: String,
     pub profile: String,
     pub model: SharedString,
@@ -412,9 +448,11 @@ pub struct Session {
     pub live: Vec<Row>,
     pub prompts: BTreeMap<String, Prompt>,
     pub running: bool,
+    pub last_turn_activity: Option<std::time::Instant>,
     pub loading: bool,
     pub history_via_rest: bool,
     pub history_rest_unavailable: bool,
+    pub awaiting_first_history: bool,
     pub history_partial: bool,
     pub history_window: crate::app::session_history::HistoryWindow,
     pub history_error: Option<String>,
@@ -439,6 +477,7 @@ pub struct Session {
     offset: usize,
     segment: Option<u64>,
     turn: String,
+    missing_prompt: Option<(u64, usize)>,
 }
 
 impl Session {
@@ -494,6 +533,11 @@ impl Session {
             .then(|| Row::Answer(Answer::live(Message::streaming(self.stream.clone().into()))))
     }
 
+    pub fn accept_correction(&mut self, text: &str) {
+        self.seal();
+        self.live.push(Row::User(text.to_owned().into()));
+    }
+
     fn seal_reasoning(&mut self) {
         if !self.reasoning.is_empty() {
             self.live
@@ -543,6 +587,7 @@ impl Session {
             self.stream.clear();
             self.reasoning.clear();
             self.turn.clear();
+            self.missing_prompt = None;
             self.segment = None;
             self.offset = 0;
         }
@@ -790,7 +835,6 @@ impl Session {
                         let tool = &call["function"];
                         let mut row = Tool::from_payload(tool, false);
                         row.id = string(call, "id").to_owned();
-                        row.args = text(&tool["arguments"]).into();
                         if !row.id.is_empty() {
                             tool_indices.insert(row.id.clone(), self.rows.len());
                         }
@@ -824,6 +868,21 @@ impl Session {
         }
     }
 
+    pub fn missing_prompt_sequence(&self) -> Option<u64> {
+        self.missing_prompt.map(|(sequence, _)| sequence)
+    }
+
+    pub fn supply_turn_prompt(&mut self, sequence: u64, text: &str, source: &Value) {
+        let Some((start, index)) = self.missing_prompt else { return };
+        if start == sequence && self.running && !text.is_empty() && index <= self.live.len() {
+            self.missing_prompt = None;
+            if source["display_kind"] != "hidden" {
+                self.live.insert(index, Row::wire_prompt(text, source));
+                self.deduplicate_live_prompt();
+            }
+        }
+    }
+
     fn update_pending(&mut self, pending: &Value) {
         let Some(pending) = pending.as_array() else {
             return;
@@ -844,6 +903,11 @@ impl Session {
                         item["sequence"].as_u64().unwrap_or(u64::MAX),
                         can_replace,
                     );
+                }
+                "started" if item["steering"] != true => {
+                    if let Some(sequence) = self.missing_prompt_sequence() {
+                        self.supply_turn_prompt(sequence, string(item, "text"), item);
+                    }
                 }
                 "unknown" => {
                     if let Some(generation) = item["execution_generation"].as_u64() {
@@ -919,6 +983,9 @@ impl Session {
         self.seq = self.seq.max(seq);
         let kind = string(event, "type");
         let payload = &event["payload"];
+        if matches!(kind, "message.start" | "message.delta" | "message.complete" | "tool.start" | "tool.complete") {
+            self.last_turn_activity = Some(std::time::Instant::now());
+        }
         let agent_event = matches!(
             kind,
             "subagent.spawn_requested"
@@ -960,6 +1027,9 @@ impl Session {
                 } else {
                     given
                 };
+                self.missing_prompt = (user.is_empty()
+                    && !self.live.last().is_some_and(|last| last.prompt_text().is_some()))
+                    .then_some((seq, self.live.len()));
                 if !user.is_empty()
                     && !self.live.last().or_else(|| self.rows.last()).is_some_and(|last| {
                         last.prompt_text() == Some(user) ||
@@ -989,6 +1059,12 @@ impl Session {
                         .as_u64()
                         .map(|n| n as usize)
                         .unwrap_or(self.offset);
+                    if offset > self.offset {
+                        // The next snapshot must rebuild this stream even if its generation is unchanged.
+                        self.seq = 0;
+                        self.refresh = true;
+                        return;
+                    }
                     let mut remaining = self.offset.saturating_sub(offset);
                     let mut start = 0;
                     for ch in chunk.chars() {
@@ -1062,6 +1138,7 @@ impl Session {
                 }
                 self.seal();
                 self.running = false;
+                self.missing_prompt = None;
                 self.todos.live_in_turn = false;
                 self.prompts.clear();
                 let error = payload["error"]
@@ -1100,6 +1177,10 @@ impl Session {
                 self.update_context(payload);
                 self.clear_applied_choices();
                 self.update_pending(&payload["pending"]);
+                if kind == "session.info" && self.running && payload["running"] == false {
+                    // Confirm the idle edge (and the queue) together in a fresh owner snapshot.
+                    self.refresh = true;
+                }
                 if let Some(generation) = payload["execution_generation"].as_u64() {
                     self.generation = self.generation.max(generation);
                 }

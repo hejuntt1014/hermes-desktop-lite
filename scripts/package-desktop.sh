@@ -49,6 +49,7 @@ case "$platform" in
   <key>CFBundleIdentifier</key><string>io.github.hejuntt1014.hermes-desktop-lite</string>
   <key>CFBundleName</key><string>Hermes Desktop Lite</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>NSMicrophoneUsageDescription</key><string>Hermes Desktop Lite uses the microphone for dictation and voice conversations.</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
   <key>NSHighResolutionCapable</key><true/>
