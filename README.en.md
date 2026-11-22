@@ -52,7 +52,7 @@ Both clients used the same profile and restored the same conversation containing
 
 - **Conversations**: tabs, pinning and archiving, branches and date groups, full-text search and profile switching; long conversations load in pages and remember where you were reading
 - **Chat**: streamed replies, reasoning, tool-call summaries, task lists, clarification and approval cards, plus edit, retry, branch and export
-- **Workspace**: browse remote files, reference files and folders, review Git changes, upload attachments and paste images
+- **Workspace**: browse remote files, reference files and folders, review Git changes, and drag, drop or paste to attach files
 - **Voice**: dictation, voice conversation (GPT-Live or speech-to-text) and wake word
 - **Personalization**: built-in and custom themes, wallpapers and transparency, importable and exportable theme packages
 - **Connection**: a local gateway or a remote one, with an access token or browser sign-in
