@@ -23,16 +23,37 @@ extension _ChatContinuation on _ChatPageState {
       style: TextStyle(color: colors.error),
     );
     if (!readOnly) {
-      return ListTile(
-        dense: true,
-        title: text,
-        trailing: runtime == null && !busy
-            ? IconButton(
-                tooltip: context.tr('重新加载会话'),
-                onPressed: open,
-                icon: const Icon(Icons.refresh_rounded),
-              )
-            : null,
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+        child: GlassSurface(
+          radius: 18,
+          padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 4, 8),
+          child: Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 18, color: colors.error),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  context.tr(message),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.error,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              if (runtime == null && !busy)
+                IconButton(
+                  tooltip: context.tr('重新加载会话'),
+                  onPressed: open,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.refresh_rounded, size: 19),
+                ),
+            ],
+          ),
+        ),
       );
     }
     return Padding(
@@ -123,57 +144,7 @@ extension _ChatSessionMenu on _ChatPageState {
     widget.onConversationAction?.call(action);
   }
 
-  Widget buildConversationTitle(Color chrome) {
-    final activity = conversationActivity;
-    final title = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (activity != null) ...[
-          ConversationIndicator(activity: activity, size: 15),
-          const SizedBox(width: 6),
-        ],
-        Flexible(
-          child: Text(
-            displayTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -.25,
-              color: widget.titleColor?.onBackground(chrome),
-            ),
-          ),
-        ),
-      ],
-    );
-    if (!hasConversationActions) return title;
-    return Tooltip(
-      message: context.tr('管理会话'),
-      child: InkWell(
-        key: const ValueKey('conversation-title-actions'),
-        borderRadius: BorderRadius.circular(8),
-        onTap: canBrowseChat ? runConversationAction : null,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 30),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(child: title),
-              const SizedBox(width: 3),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 17,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<PopupMenuEntry<_ChatMenu>> buildConversationMenu(BuildContext menu) {
-    final colors = Theme.of(menu).colorScheme;
+  List<GlassMenuItem<_ChatMenu>> chatMenuItems() {
     bool visible(_ChatMenu item) => switch (item) {
       _ChatMenu.workspace => hasWorkspace,
       _ChatMenu.rename || _ChatMenu.export => hasConversationActions,
@@ -194,29 +165,17 @@ extension _ChatSessionMenu on _ChatPageState {
     };
     return [
       for (final item in _ChatMenu.values)
-        if (visible(item)) ...[
-          if (item == _ChatMenu.newChat ||
-              item == _ChatMenu.find ||
-              item == _ChatMenu.gateway)
-            const PopupMenuDivider(height: 8),
-          PopupMenuItem(
+        if (visible(item))
+          GlassMenuItem(
             value: item,
+            icon: item.icon,
+            label: context.tr(item.label),
             enabled: enabled(item),
-            child: Row(
-              children: [
-                Icon(
-                  item.icon,
-                  size: 19,
-                  color: enabled(item)
-                      ? colors.onSurfaceVariant
-                      : colors.onSurface.withValues(alpha: .38),
-                ),
-                const SizedBox(width: 11),
-                Flexible(child: Text(menu.tr(item.label))),
-              ],
-            ),
+            separated:
+                item == _ChatMenu.newChat ||
+                item == _ChatMenu.find ||
+                item == _ChatMenu.gateway,
           ),
-        ],
     ];
   }
 }
@@ -370,69 +329,43 @@ extension _ChatQuickAccess on _ChatPageState {
 
 enum _ComposerAction {
   camera('拍照', Icons.photo_camera_outlined),
-  photo('选择照片', Icons.image_outlined),
-  file('添加文件', Icons.attach_file_rounded),
-  pasteImage('粘贴剪贴板图片', Icons.content_paste_rounded),
+  photo('照片', Icons.image_outlined),
+  file('文件', Icons.attach_file_rounded),
+  commands('命令与技能', Icons.terminal_rounded),
+  pasteImage('粘贴图片', Icons.content_paste_rounded),
   referenceFile('引用远程文件', Icons.description_outlined),
-  referenceFolder('引用远程文件夹', Icons.folder_outlined),
-  commands('命令与技能', Icons.terminal_rounded);
+  referenceFolder('引用远程文件夹', Icons.folder_outlined);
 
   const _ComposerAction(this.label, this.icon);
   final String label;
   final IconData icon;
 }
 
+/// Glass popover over the + button: the four everyday actions as large
+/// rows, then the occasional ones below a hairline.
 Future<_ComposerAction?> _chooseComposerAction(
   BuildContext context, {
+  required Rect anchor,
   required bool canReference,
   required bool canPasteImages,
-}) {
-  FocusManager.instance.primaryFocus?.unfocus();
-  return showModalBottomSheet<_ComposerAction>(
-    context: context,
-    showDragHandle: true,
-    barrierColor: Colors.black.withValues(
-      alpha: Theme.of(context).brightness == Brightness.dark ? .54 : .28,
-    ),
-    builder: (sheet) {
-      final colors = Theme.of(sheet).colorScheme;
-      return SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(15, 0, 15, 11),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final action in _ComposerAction.values) ...[
-                if (action == _ComposerAction.commands ||
-                    action == _ComposerAction.referenceFile && canReference)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    child: Divider(color: colors.outlineVariant, height: 9),
-                  ),
-                if ((action != _ComposerAction.pasteImage || canPasteImages) &&
-                    (canReference ||
-                        action != _ComposerAction.referenceFile &&
-                            action != _ComposerAction.referenceFolder))
-                  ListTile(
-                    title: Text(sheet.tr(action.label)),
-                    leading: Icon(
-                      action.icon,
-                      color: colors.onSurfaceVariant,
-                      size: 21,
-                    ),
-                    minLeadingWidth: 23,
-                    minTileHeight: 48,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    onTap: () => Navigator.pop(sheet, action),
-                  ),
-              ],
-            ],
-          ),
+}) => showGlassMenu<_ComposerAction>(
+  context,
+  anchor: anchor,
+  prominent: true,
+  width: 250,
+  items: [
+    for (final action in _ComposerAction.values)
+      if ((action != _ComposerAction.pasteImage || canPasteImages) &&
+          (canReference ||
+              action != _ComposerAction.referenceFile &&
+                  action != _ComposerAction.referenceFolder))
+        GlassMenuItem(
+          value: action,
+          icon: action.icon,
+          label: context.tr(action.label),
+          separated:
+              action == _ComposerAction.pasteImage ||
+              action == _ComposerAction.referenceFile && !canPasteImages,
         ),
-      );
-    },
-  );
-}
+  ],
+);

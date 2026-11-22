@@ -674,7 +674,8 @@ extension _ChatReading on _ChatPageState {
       promptId: address.promptId ?? readingAddresses[target]?.promptId,
       tailOffset: address.tailOffset ?? readingAddresses[target]?.tailOffset,
     );
-    final cached = existing != null && _projectHistory(existing).contains(target)
+    final cached =
+        existing != null && _projectHistory(existing).contains(target)
         ? existing
         : _windowFromRecentHistory(target);
     if (cached != null && _projectHistory(cached).contains(target)) {
@@ -752,15 +753,16 @@ extension _ChatReading on _ChatPageState {
         transcriptSession == id;
     updateSlash(() => readingError = null);
     try {
-      final page = await TranscriptNavigation(
-        widget.gateway,
-        widget.profile,
-        id,
-      ).adjacent(
-        older ? window.oldest : window.latest,
-        older: older,
-        control: control,
-      );
+      final page =
+          await TranscriptNavigation(
+            widget.gateway,
+            widget.profile,
+            id,
+          ).adjacent(
+            older ? window.oldest : window.latest,
+            older: older,
+            control: control,
+          );
       if (!current()) return;
       updateSlash(() {
         window.extend(page, older: older);
@@ -1058,62 +1060,76 @@ extension _ChatReading on _ChatPageState {
           )
         : _projectHistory(window);
     scheduleReadingIndicators();
-    final viewport = _trackedTranscript(
-      window == null
-          ? _latestTranscript(timeline)
-          : _buildHistoryWindow(window, timeline),
-    );
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        viewport,
-        if (readingJump != null || readingLoading || loadingOlder)
-          const PositionedDirectional(
-            top: 0,
-            start: 0,
-            end: 0,
-            child: LinearProgressIndicator(minHeight: 2),
+    final top = chromeTopInset;
+    return ValueListenableBuilder<double>(
+      valueListenable: dockHeight,
+      builder: (context, dock, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          _trackedTranscript(
+            window == null
+                ? _latestTranscript(timeline, top: top, bottom: dock)
+                : _buildHistoryWindow(window, timeline, top: top, bottom: dock),
           ),
-        if (readingJump != null)
-          PositionedDirectional(
-            top: 8,
-            end: 16,
-            child: ActionChip(
-              avatar: const Icon(Icons.close_rounded, size: 16),
-              label: Text(context.tr('取消定位')),
-              onPressed: cancelReadingJump,
+          if (readingJump != null || readingLoading || loadingOlder)
+            PositionedDirectional(
+              top: top - 6,
+              start: 24,
+              end: 24,
+              child: const ClipRRect(
+                borderRadius: BorderRadius.all(Radius.circular(2)),
+                child: LinearProgressIndicator(minHeight: 2.5),
+              ),
             ),
-          )
-        else if (readingError case final failure?)
+          if (readingJump != null)
+            PositionedDirectional(
+              top: top + 4,
+              end: 16,
+              child: GlassSurface(
+                radius: 18,
+                child: TextButton.icon(
+                  onPressed: cancelReadingJump,
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  label: Text(context.tr('取消定位')),
+                ),
+              ),
+            )
+          else if (readingError case final failure?)
+            PositionedDirectional(
+              top: top + 4,
+              start: 16,
+              end: 16,
+              child: _readingRetry(failure.older, failure.message),
+            ),
+          if (readingError == null &&
+              readingJump == null &&
+              !readingLoading &&
+              !loadingOlder)
+            PositionedDirectional(
+              top: top,
+              start: 14,
+              end: 14,
+              child: _pinnedQuestionButton(),
+            ),
           PositionedDirectional(
-            top: 8,
-            start: 16,
             end: 16,
-            child: _readingRetry(failure.older, failure.message),
+            bottom: dock + 4,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: awayFromLatest,
+              builder: (context, away, _) => AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                transitionBuilder: (child, animation) => ScaleTransition(
+                  scale: animation,
+                  child: FadeTransition(opacity: animation, child: child),
+                ),
+                child: window != null || away
+                    ? _jumpToLatestButton()
+                    : const SizedBox.shrink(),
+              ),
+            ),
           ),
-        if (readingError == null &&
-            readingJump == null &&
-            !readingLoading &&
-            !loadingOlder)
-          PositionedDirectional(
-            top: 6,
-            start: 18,
-            end: 18,
-            child: _pinnedQuestionButton(),
-          ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: awayFromLatest,
-            builder: (context, away, _) => window != null || away
-                ? Padding(
-                    padding: const EdgeInsets.only(bottom: 9),
-                    child: _jumpToLatestButton(),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1144,36 +1160,41 @@ extension _ChatReading on _ChatPageState {
             label: preview.isEmpty ? action : '$action · $preview',
             onTap: jump,
             excludeSemantics: true,
-            child: Material(
-              color: colors.secondaryContainer,
-              elevation: 1,
-              shadowColor: colors.shadow.withValues(alpha: .16),
-              borderRadius: BorderRadius.circular(12),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: jump,
-                child: SizedBox(
-                  height: _pinnedQuestionHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            preview.isEmpty ? action : preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: colors.onSecondaryContainer),
+            child: GlassSurface(
+              radius: _pinnedQuestionHeight / 2,
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: jump,
+                  child: SizedBox(
+                    height: _pinnedQuestionHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.subdirectory_arrow_right_rounded,
+                            color: colors.onSurfaceVariant,
+                            size: 16,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_upward_rounded,
-                          color: colors.onSecondaryContainer,
-                          size: 17,
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              preview.isEmpty ? action : preview,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: colors.onSurface),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_upward_rounded,
+                            color: colors.onSurfaceVariant,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1185,9 +1206,11 @@ extension _ChatReading on _ChatPageState {
     },
   );
 
+  /// Small round glass button; a badge carries the unseen message count.
   Widget _jumpToLatestButton() => ValueListenableBuilder<int?>(
     valueListenable: messagesBelow,
     builder: (context, count, _) {
+      final colors = Theme.of(context).colorScheme;
       final jump = context.tr('回到最新');
       final label = switch (count) {
         1 => context.tr('1 条消息'),
@@ -1197,16 +1220,54 @@ extension _ChatReading on _ChatPageState {
         null when newHistoryWhileReading => context.tr('有新消息'),
         _ => jump,
       };
+      final badge = switch (count) {
+        final int n when n > 99 => '99+',
+        final int n when n > 0 => '$n',
+        null when newHistoryWhileReading => '',
+        _ => null,
+      };
       return Semantics(
         container: true,
         button: true,
         label: label == jump ? jump : '$jump · $label',
         onTap: returnToLatest,
         excludeSemantics: true,
-        child: FilledButton.tonalIcon(
-          onPressed: returnToLatest,
-          icon: const Icon(Icons.arrow_downward_rounded, size: 17),
-          label: Text(label),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            GlassIconButton(
+              icon: Icons.arrow_downward_rounded,
+              tooltip: jump,
+              size: 42,
+              onPressed: returnToLatest,
+            ),
+            if (badge != null)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: IgnorePointer(
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    height: 18,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.primary,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      badge,
+                      style: TextStyle(
+                        color: colors.onPrimary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       );
     },
@@ -1229,12 +1290,16 @@ extension _ChatReading on _ChatPageState {
     ),
   );
 
-  Widget _latestTranscript(_ReadingTimeline presentation) {
+  Widget _latestTranscript(
+    _ReadingTimeline presentation, {
+    required double top,
+    required double bottom,
+  }) {
     final timeline = presentation.items;
     return ListView.builder(
       controller: latestScroll,
       reverse: true,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      padding: EdgeInsets.fromLTRB(18, top + 4, 18, bottom + 8),
       itemCount: timeline.length + 1 + (oldest?.nextOffset != null ? 1 : 0),
       findChildIndexCallback: (key) => key is ValueKey<Object>
           ? presentation.latestIndices[key.value]
@@ -1273,7 +1338,12 @@ extension _ChatReading on _ChatPageState {
     );
   }
 
-  Widget _buildHistoryWindow(ReadingWindow window, _ReadingTimeline timeline) {
+  Widget _buildHistoryWindow(
+    ReadingWindow window,
+    _ReadingTimeline timeline, {
+    required double top,
+    required double bottom,
+  }) {
     final split = timeline.split(window.center);
     if (split == null) {
       return const SizedBox.expand();
@@ -1284,6 +1354,10 @@ extension _ChatReading on _ChatPageState {
       controller: readingScroll,
       center: centerKey,
       slivers: [
+        SliverToBoxAdapter(
+          key: const ValueKey("chrome-top-space"),
+          child: SizedBox(height: top),
+        ),
         if (window.oldest.hasOlder)
           SliverToBoxAdapter(
             key: const ValueKey('older-page'),
@@ -1304,7 +1378,7 @@ extension _ChatReading on _ChatPageState {
             key: const ValueKey('newer-page'),
             child: _historyEdge(older: false),
           ),
-        const SliverToBoxAdapter(child: SizedBox(height: 56)),
+        SliverToBoxAdapter(child: SizedBox(height: bottom + 56)),
       ],
     );
   }

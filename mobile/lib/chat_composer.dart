@@ -703,7 +703,7 @@ class _ComposerWorkspaceBar extends StatelessWidget {
               onTap: review ?? onBrowse,
               onLongPress: copy,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 44),
+                constraints: const BoxConstraints(minHeight: 34),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 7),
                   child: Row(
@@ -750,29 +750,32 @@ class _ComposerWorkspaceBar extends StatelessWidget {
               ),
             ),
           ),
-          PopupMenuButton<_WorkspaceAction>(
-            tooltip: context.tr('工作区操作'),
-            position: PopupMenuPosition.under,
-            icon: const Icon(Icons.more_horiz_rounded, size: 20),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 180, maxWidth: 288),
-            onSelected: (action) => switch (action) {
-              _WorkspaceAction.browse => onBrowse?.call(),
-              _WorkspaceAction.review => review?.call(),
-              _WorkspaceAction.copy => copy(),
-            },
-            itemBuilder: (context) => [
-              for (final (action, label, enabled) in [
-                (_WorkspaceAction.browse, '浏览工作区文件', onBrowse != null),
-                (_WorkspaceAction.review, '审查工作区变更', review != null),
-                (_WorkspaceAction.copy, '复制工作区路径', true),
-              ])
-                PopupMenuItem(
-                  value: action,
-                  enabled: enabled,
-                  child: Text(context.tr(label)),
-                ),
-            ],
+          SizedBox(
+            height: 34,
+            child: PopupMenuButton<_WorkspaceAction>(
+              tooltip: context.tr('工作区操作'),
+              position: PopupMenuPosition.under,
+              icon: const Icon(Icons.more_horiz_rounded, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 180, maxWidth: 288),
+              onSelected: (action) => switch (action) {
+                _WorkspaceAction.browse => onBrowse?.call(),
+                _WorkspaceAction.review => review?.call(),
+                _WorkspaceAction.copy => copy(),
+              },
+              itemBuilder: (context) => [
+                for (final (action, label, enabled) in [
+                  (_WorkspaceAction.browse, '浏览工作区文件', onBrowse != null),
+                  (_WorkspaceAction.review, '审查工作区变更', review != null),
+                  (_WorkspaceAction.copy, '复制工作区路径', true),
+                ])
+                  PopupMenuItem(
+                    value: action,
+                    enabled: enabled,
+                    child: Text(context.tr(label)),
+                  ),
+              ],
+            ),
           ),
         ],
       ),

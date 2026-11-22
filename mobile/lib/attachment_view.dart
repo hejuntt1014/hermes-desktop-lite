@@ -282,15 +282,36 @@ class RemoteFileTile extends StatefulWidget {
     required this.path,
     this.label,
     this.onOpen,
+    this.embedded = false,
   });
   final Gateway gateway;
   final String? sessionId, label;
   final String profile, path;
   final VoidCallback? onOpen;
 
+  /// Inside a message bubble: no card of its own, so there is no frame
+  /// inside a frame.
+  final bool embedded;
+
   @override
   State<RemoteFileTile> createState() => _RemoteFileTileState();
 }
+
+/// Tone for a file-type badge, grouped the way people recognise files.
+Color _fileTone(String extension, ColorScheme colors) => switch (extension) {
+  'XLSX' || 'XLS' || 'CSV' || 'NUMBERS' => const Color(0xff1f9d55),
+  'PDF' => const Color(0xffd64545),
+  'DOC' || 'DOCX' || 'PAGES' || 'RTF' => const Color(0xff3b6fd9),
+  'PPT' || 'PPTX' || 'KEY' => const Color(0xffe07b24),
+  'ZIP' || 'RAR' || '7Z' || 'GZ' || 'TAR' => const Color(0xff9a6b2f),
+  'MD' ||
+  'TXT' ||
+  'LOG' ||
+  'JSON' ||
+  'YAML' ||
+  'YML' => colors.onSurfaceVariant,
+  _ => colors.primary,
+};
 
 class _RemoteFileTileState extends State<RemoteFileTile> {
   bool saving = false;
@@ -337,63 +358,107 @@ class _RemoteFileTileState extends State<RemoteFileTile> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final name = fileName;
+    final dot = name.lastIndexOf('.');
+    final extension = dot > 0 && dot < name.length - 1
+        ? name.substring(dot + 1).toUpperCase()
+        : '';
+    final tone = _fileTone(extension, colors);
+    final title = widget.label ?? name;
+    final detail = widget.label != null && widget.label != name
+        ? name
+        : extension.isEmpty
+        ? context.tr('文件')
+        : context.strings.format('{type} 文件', {'type': extension});
+    final radius = BorderRadius.circular(widget.embedded ? 12 : 16);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: EdgeInsets.symmetric(vertical: widget.embedded ? 0 : 3),
       child: Material(
-        color: colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: colors.outlineVariant),
-        ),
-        child: ListTile(
-          minTileHeight: 52,
-          contentPadding: const EdgeInsetsDirectional.only(start: 12, end: 2),
-          leading: Icon(
-            Icons.insert_drive_file_outlined,
-            size: 20,
-            color: colors.onSurfaceVariant,
-          ),
-          title: Text(
-            widget.label ?? fileName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: widget.label == null || widget.label == fileName
-              ? null
-              : Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: saving
-              ? const SizedBox.square(
-                  dimension: 40,
-                  child: Center(
-                    child: SizedBox.square(
-                      dimension: 17,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: context.tr('下载附件'),
-                      onPressed: save,
-                      icon: const Icon(Icons.download_outlined, size: 19),
-                    ),
-                    PopupMenuButton<bool>(
-                      tooltip: context.tr('附件操作'),
-                      icon: const Icon(Icons.more_horiz_rounded, size: 18),
-                      onSelected: (_) => save(share: true),
-                      itemBuilder: (_) => [
-                        PopupMenuItem(
-                          value: true,
-                          child: Text(context.tr('分享文件')),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+        color: widget.embedded
+            ? Colors.transparent
+            : colors.surfaceContainerLow,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
           onTap: saving ? null : widget.onOpen ?? save,
+          onLongPress: saving ? null : () => save(share: true),
+          child: Padding(
+            padding: widget.embedded
+                ? const EdgeInsets.symmetric(vertical: 2)
+                : const EdgeInsetsDirectional.fromSTEB(10, 8, 4, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: .13),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: extension.isEmpty || extension.length > 4
+                      ? Icon(
+                          Icons.insert_drive_file_rounded,
+                          size: 19,
+                          color: tone,
+                        )
+                      : Text(
+                          extension,
+                          style: TextStyle(
+                            color: tone,
+                            fontSize: extension.length > 3 ? 9.5 : 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -.2,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (saving)
+                  const SizedBox.square(
+                    dimension: 40,
+                    child: Center(
+                      child: SizedBox.square(
+                        dimension: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    tooltip: context.tr('下载附件'),
+                    onPressed: save,
+                    visualDensity: VisualDensity.compact,
+                    color: colors.onSurfaceVariant,
+                    icon: const Icon(Icons.download_rounded, size: 19),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -7,13 +7,17 @@ class _NewChatStart extends StatelessWidget {
   final List<Json> recent;
   final ValueChanged<Json> onOpen;
 
-  static String greeting(DateTime now) => switch (now.hour) {
-    < 5 => '晚上好',
-    < 11 => '早上好',
-    < 13 => '中午好',
-    < 18 => '下午好',
-    _ => '晚上好',
-  };
+  /// A warmer greeting than the clock: the day of the week, like a person
+  /// would say it.
+  static String greeting(DateTime now) => const [
+    '星期一愉快',
+    '星期二愉快',
+    '星期三愉快',
+    '星期四愉快',
+    '星期五愉快',
+    '星期六愉快',
+    '星期日愉快',
+  ][now.weekday - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +29,7 @@ class _NewChatStart extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, space) {
         if (space.maxHeight < 120) return const SizedBox.expand();
-        final rows = recent.take(space.maxHeight < 420 ? 1 : 3).toList();
+        final rows = recent.take(space.maxHeight < 420 ? 1 : 2).toList();
         return Align(
           alignment: Alignment.bottomCenter,
           child: ConstrainedBox(
@@ -36,7 +40,7 @@ class _NewChatStart extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: BrandMark(size: 52)),
+                  const Center(child: BrandMark(size: 44)),
                   const SizedBox(height: 18),
                   Text(
                     context.tr(greeting(DateTime.now())),
@@ -95,68 +99,70 @@ class _RecentCard extends StatelessWidget {
         .toString();
     final preview = row['title'] == null ? null : row['preview']?.toString();
     final time = sessionTime(row);
-    return Material(
-      color: colors.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(18),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 17,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (preview != null && preview.trim().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          preview.trim(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (time != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Text(
-                    MaterialLocalizations.of(context).formatShortMonthDay(time),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
+    return GlassSurface(
+      radius: 22,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: colors.onSurface.withValues(alpha: .05),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (preview != null && preview.trim().isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            preview.trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (time != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(
+                      MaterialLocalizations.of(context)
+                          .formatShortMonthDay(time),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

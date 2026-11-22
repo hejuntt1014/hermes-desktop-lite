@@ -99,7 +99,9 @@ String displayedUserMessageBody(String body) => projectUserMessage(body).body;
     )) {
       final attachment = line.attachment;
       final retained =
-          line.text.startsWith('@image:') && attachment != null && attachment.image
+          line.text.startsWith('@image:') &&
+              attachment != null &&
+              attachment.image
           ? paths.remove(_visionAttachmentIdentity(attachment.path))
           : null;
       lines.add(retained == null ? line.text : '@image:$retained');
@@ -974,6 +976,7 @@ class MessageContent extends StatelessWidget {
             profile: profile,
             path: path,
             label: attachment.label,
+            embedded: user,
             onOpen: open == null ? null : () => open(path, attachment.fragment),
           ),
         );
