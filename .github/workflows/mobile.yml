@@ -3,8 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Preview target
+        description: Build target (Android ARM64 publishes from main)
         required: true
+        default: android-arm64
         type: choice
         options:
           - android-arm64
@@ -17,11 +18,15 @@ jobs:
   mobile:
     name: ${{ inputs.target }}
     runs-on: ${{ startsWith(inputs.target, 'ios-') && 'macos-15' || 'ubuntu-24.04' }}
+    outputs:
+      android_version: ${{ steps.android.outputs.version }}
     defaults:
       run:
         working-directory: mobile
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
       - name: Install Flutter
         run: |
           git init "$RUNNER_TEMP/flutter"
@@ -29,7 +34,8 @@ jobs:
           git -C "$RUNNER_TEMP/flutter" checkout --detach FETCH_HEAD
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - run: flutter pub get --enforce-lockfile
-      - name: Build Android preview
+      - name: Build Android APK
+        id: android
         if: runner.os == 'Linux'
         env:
           TARGET: ${{ inputs.target }}
@@ -39,11 +45,34 @@ jobs:
             android-x64) platform=android-x64; abi=x86_64 ;;
             *) exit 1 ;;
           esac
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
-          flutter build apk --no-pub --release --split-per-abi --target-platform "$platform"
+          flutter build apk --no-pub --release --split-per-abi \
+            --target-platform "$platform" --build-number "$GITHUB_RUN_NUMBER"
           mkdir -p build/preview
           cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "build/preview/hermes-mobile-$TARGET.apk"
+          version=$(sed -nE 's/^version: ([0-9]+\.[0-9]+\.[0-9]+)(\+[0-9]+)?$/\1/p' pubspec.yaml)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Sign Android release APK
+        if: inputs.target == 'android-arm64' && github.ref == 'refs/heads/main'
+        env:
+          ANDROID_RELEASE_KEYSTORE: ${{ secrets.ANDROID_RELEASE_KEYSTORE }}
+          ANDROID_RELEASE_PASSWORD: ${{ secrets.ANDROID_RELEASE_PASSWORD }}
+        run: |
+          : "${ANDROID_RELEASE_KEYSTORE:?Missing ANDROID_RELEASE_KEYSTORE}"
+          : "${ANDROID_RELEASE_PASSWORD:?Missing ANDROID_RELEASE_PASSWORD}"
+          umask 077
+          keystore=$(mktemp)
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE" | base64 --decode > "$keystore"
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks "$keystore" --ks-type PKCS12 --ks-key-alias hermes-android \
+            --ks-pass env:ANDROID_RELEASE_PASSWORD --key-pass env:ANDROID_RELEASE_PASSWORD \
+            build/preview/hermes-mobile-android-arm64.apk
       - name: Build unsigned iOS device app
         if: inputs.target == 'ios-unsigned'
         run: |
@@ -99,3 +128,27 @@ jobs:
           name: hermes-mobile-${{ inputs.target }}
           path: mobile/build/preview/
           if-no-files-found: error
+
+  publish-android:
+    name: Publish Android ARM64 preview
+    if: inputs.target == 'android-arm64' && github.ref == 'refs/heads/main'
+    needs: mobile
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: hermes-mobile-android-arm64
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.mobile.outputs.android_version }}
+        run: |
+          tag="android-v${VERSION}-preview.${GITHUB_RUN_NUMBER}"
+          apk=hermes-mobile-android-arm64.apk
+          gh release create "$tag" "$apk" \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Hermes Lite Android v${VERSION} Preview ${GITHUB_RUN_NUMBER}" \
+            --notes 'Android ARM64 预览版。 / Android ARM64 preview.'

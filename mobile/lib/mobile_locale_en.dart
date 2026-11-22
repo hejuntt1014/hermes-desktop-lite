@@ -1113,4 +1113,9 @@ const _english = <String, String>{
   '未提交': 'Uncommitted',
   '当前分支': 'Current branch',
   '对比上一版本': 'Previous version',
+  '关闭全部': 'Close all',
+  '重新打开关闭的标签': 'Reopen closed tab',
+  '空白会话，开始输入吧': 'Empty conversation — start typing',
+  '暂无预览': 'No preview yet',
+  '当前': 'Current',
 };

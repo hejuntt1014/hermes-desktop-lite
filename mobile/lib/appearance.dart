@@ -40,30 +40,44 @@ ColorScheme liteColors(Brightness brightness, LitePalette palette) {
     brightness: brightness,
   );
   return switch (palette) {
+    // Neutral ink-on-paper surfaces; colour is reserved for one indigo accent
+    // so state (links, progress, selection) stands out instead of the chrome.
     LitePalette.standard => seed.copyWith(
-      primary: dark ? const Color(0xffffaed2) : const Color(0xffa91f61),
-      onPrimary: dark ? const Color(0xff431226) : Colors.white,
-      surface: dark ? const Color(0xff201e23) : Colors.white,
+      primary: dark ? const Color(0xffa9b4ff) : const Color(0xff4652d1),
+      onPrimary: dark ? const Color(0xff141a4d) : Colors.white,
+      primaryContainer: dark
+          ? const Color(0xff2b3170)
+          : const Color(0xffe6e8ff),
+      onPrimaryContainer: dark
+          ? const Color(0xffe0e3ff)
+          : const Color(0xff1c2378),
+      tertiary: dark ? const Color(0xfff2b872) : const Color(0xffb25e09),
+      surface: dark ? const Color(0xff17171a) : Colors.white,
+      surfaceContainerLowest: dark ? const Color(0xff111113) : Colors.white,
       surfaceContainerLow: dark
-          ? const Color(0xff27242a)
-          : const Color(0xfff6f4f6),
+          ? const Color(0xff1f1f23)
+          : const Color(0xfff5f5f7),
       surfaceContainer: dark
-          ? const Color(0xff2d2930)
-          : const Color(0xfff0edf1),
+          ? const Color(0xff26262b)
+          : const Color(0xffefeff2),
       surfaceContainerHigh: dark
-          ? const Color(0xff343037)
-          : const Color(0xffebe7ec),
-      onSurface: dark ? const Color(0xfff8f4f7) : const Color(0xff231f27),
+          ? const Color(0xff2e2e34)
+          : const Color(0xffe8e8ec),
+      surfaceContainerHighest: dark
+          ? const Color(0xff36363d)
+          : const Color(0xffe1e1e6),
+      onSurface: dark ? const Color(0xfff1f1f3) : const Color(0xff18181b),
       onSurfaceVariant: dark
-          ? const Color(0xffc0b7c4)
-          : const Color(0xff69616e),
-      outlineVariant: dark ? const Color(0xff423b46) : const Color(0xffe9e4ea),
+          ? const Color(0xffa3a3ad)
+          : const Color(0xff676772),
+      outline: dark ? const Color(0xff5b5b66) : const Color(0xffa8a8b2),
+      outlineVariant: dark ? const Color(0xff2f2f36) : const Color(0xffe6e6ea),
       secondaryContainer: dark
-          ? const Color(0xff432838)
-          : const Color(0xfffbeaf2),
+          ? const Color(0xff2a2a31)
+          : const Color(0xfff0f0f4),
       onSecondaryContainer: dark
-          ? const Color(0xfff9e3ee)
-          : const Color(0xff562239),
+          ? const Color(0xfff1f1f3)
+          : const Color(0xff18181b),
     ),
     LitePalette.rose when !dark => seed.copyWith(
       surface: const Color(0xfffff8fb),
@@ -109,8 +123,8 @@ ThemeData liteTheme(
       custom?.color(ThemeColor.canvas) ??
       (palette == LitePalette.standard
           ? brightness == Brightness.dark
-                ? const Color(0xff1c1a1e)
-                : const Color(0xfffdfbfd)
+                ? const Color(0xff111113)
+                : const Color(0xfff7f7f9)
           : scheme.surface);
   final fieldRadius = BorderRadius.circular(16);
   final interfaceFont = ThemeFont.interface.resolve(
@@ -140,6 +154,23 @@ ThemeData liteTheme(
         minimumSize: const Size(48, 46),
         shape: const StadiumBorder(),
       ),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: scheme.surfaceContainerLow,
+      surfaceTintColor: Colors.transparent,
+      elevation: 6,
+      shadowColor: Colors.black.withValues(alpha: .18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: scheme.onSurface,
+      contentTextStyle: TextStyle(color: scheme.surface),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: scheme.primary,
+      linearTrackColor: Colors.transparent,
     ),
     cardTheme: CardThemeData(
       elevation: 0,

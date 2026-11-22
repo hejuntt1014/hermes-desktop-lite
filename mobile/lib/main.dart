@@ -15,6 +15,7 @@ import 'chat.dart';
 import 'chat_tabs.dart';
 import 'composer_attachments.dart';
 import 'chat_tab_strip.dart';
+import 'tab_switcher.dart';
 import 'chat_tab_viewport.dart';
 import 'gateway.dart';
 import 'profiles.dart';
@@ -773,8 +774,7 @@ class _SessionsPageState extends State<SessionsPage> {
   final readingReceipts = <(String, String), Future<void>>{};
   String query = '';
   bool archived = false;
-  final archiveLists =
-      <bool, ({List<Json> rows, int nextOffset, bool more})>{};
+  final archiveLists = <bool, ({List<Json> rows, int nextOffset, bool more})>{};
   bool mutating = false;
   Timer? debounce;
   Timer? rosterTimer;
@@ -1897,7 +1897,9 @@ class _SessionsPageState extends State<SessionsPage> {
           recent = recent.where((row) => tabSessionId(row) != id).toList();
           archiveLists.updateAll(
             (_, cached) => (
-              rows: cached.rows.where((row) => tabSessionId(row) != id).toList(),
+              rows: cached.rows
+                  .where((row) => tabSessionId(row) != id)
+                  .toList(),
               nextOffset: cached.nextOffset,
               more: cached.more,
             ),
@@ -2223,17 +2225,23 @@ class _SessionsPageState extends State<SessionsPage> {
   }
 
   Future<void> showOpenTabs() async {
-    final visible = visibleTabs;
     final active = tabs.active;
-    if (active == null || visible.length < 2) return;
+    if (active == null || visibleTabs.isEmpty) return;
     refreshOpenProfileMetadata();
-    final chosen = await chooseOpenTab(
+    final chosen = await showTabSwitcher(
       context,
-      tabs: visible,
       active: active.id,
+      actions: TabSwitcherActions(
+        tabs: () => visibleTabs,
+        onClose: closeTab,
+        onCloseGroup: closeTabGroup,
+        onNew: () => open(),
+        onReopen: canReopenTab ? reopenTab : null,
+      ),
       activities: tabActivities,
       metadataChanges: tabMetadataChanges,
       profileLabel: profileLabel,
+      titleColor: tabTitleColor,
     );
     if (mounted &&
         chosen != null &&
@@ -2501,11 +2509,17 @@ class _SessionsPageState extends State<SessionsPage> {
     },
     onCloseTab: () => closeTab(tab),
     onReopenTab: canReopenTab ? reopenTab : null,
-    onShowTabs: visible.length > 1 ? showOpenTabs : null,
+    onShowTabs: showOpenTabs,
+    tabCount: visible.length,
+    onCycleTab: visible.length > 1 ? cycleTab : null,
     keyboardActive: tab.id == active.id,
     landscapeKeyboard: landscapeKeyboard,
     fileDropActive: !drawerVisible,
-    tabStrip: tab.id == active.id && visible.length > 1
+    // Phones use the tab switcher sheet; only wide layouts keep a strip.
+    tabStrip:
+        tab.id == active.id &&
+            visible.length > 1 &&
+            MediaQuery.sizeOf(context).width >= 840
         ? ValueListenableBuilder(
             valueListenable: tabActivities,
             builder: (_, activityByTab, _) => ChatTabStrip(
@@ -2613,8 +2627,7 @@ class _SessionsPageState extends State<SessionsPage> {
             ? ConversationActivity.background
             : null);
     final current = selected;
-    final isSelected =
-        current != null && sessionLineage(current) == lineage;
+    final isSelected = current != null && sessionLineage(current) == lineage;
     final showActions = id != null && (isSelected || archived);
     return ConversationTile(
       key: ValueKey(id),

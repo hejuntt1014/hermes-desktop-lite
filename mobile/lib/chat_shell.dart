@@ -87,8 +87,9 @@ extension _ChatContinuation on _ChatPageState {
 }
 
 enum _ChatMenu {
+  quickAccess('快捷入口', Icons.search_rounded),
+  workspace('工作区', Icons.folder_open_outlined),
   newChat('新建会话', Icons.add_rounded),
-  tabs('已打开的标签', Icons.tab_unselected_rounded),
   rename('重命名会话', Icons.edit_outlined),
   export('导出会话', Icons.download_outlined),
   find('查找与定位', Icons.manage_search_rounded),
@@ -174,7 +175,7 @@ extension _ChatSessionMenu on _ChatPageState {
   List<PopupMenuEntry<_ChatMenu>> buildConversationMenu(BuildContext menu) {
     final colors = Theme.of(menu).colorScheme;
     bool visible(_ChatMenu item) => switch (item) {
-      _ChatMenu.tabs => widget.onShowTabs != null,
+      _ChatMenu.workspace => hasWorkspace,
       _ChatMenu.rename || _ChatMenu.export => hasConversationActions,
       _ChatMenu.find ||
       _ChatMenu.conversationFiles ||
@@ -194,7 +195,9 @@ extension _ChatSessionMenu on _ChatPageState {
     return [
       for (final item in _ChatMenu.values)
         if (visible(item)) ...[
-          if (item == _ChatMenu.find || item == _ChatMenu.gateway)
+          if (item == _ChatMenu.newChat ||
+              item == _ChatMenu.find ||
+              item == _ChatMenu.gateway)
             const PopupMenuDivider(height: 8),
           PopupMenuItem(
             value: item,

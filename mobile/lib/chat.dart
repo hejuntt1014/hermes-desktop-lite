@@ -56,6 +56,7 @@ import 'activity_view.dart';
 import 'attachment_view.dart' show exportLocalAttachment, fileShareOrigin;
 import 'message_bookmarks.dart';
 import 'quick_access.dart';
+import 'tab_switcher.dart' show TabCountButton;
 import 'mobile_settings.dart';
 import 'mobile_voice.dart';
 import 'mobile_wake.dart';
@@ -89,6 +90,7 @@ part 'chat_queue.dart';
 part 'chat_models.dart';
 part 'chat_status.dart';
 part 'chat_composer.dart';
+part 'chat_chrome.dart';
 part 'chat_voice.dart';
 part 'chat_clipboard.dart';
 part 'chat_history_addresses.dart';
@@ -139,6 +141,8 @@ class ChatPage extends StatefulWidget {
     this.onCloseTab,
     this.onReopenTab,
     this.onShowTabs,
+    this.tabCount = 1,
+    this.onCycleTab,
     this.keyboardActive = true,
     this.landscapeKeyboard = false,
     this.fileDropActive = true,
@@ -178,6 +182,8 @@ class ChatPage extends StatefulWidget {
   final int reloadRequest;
   final bool? libraryDocked;
   final VoidCallback? onCloseTab, onReopenTab, onShowTabs;
+  final int tabCount;
+  final ValueChanged<int>? onCycleTab;
   final bool keyboardActive, landscapeKeyboard, fileDropActive;
   final List<Json> recent;
   final ValueChanged<Json> onOpen;
@@ -345,7 +351,10 @@ class _ChatPageState extends State<ChatPage> {
 
   void reconcilePromptNotifications() {
     if (alertTarget() case final scope?) {
-      MobileNotifications.shared.reconcilePrompts(scope, pendingInteractions.keys);
+      MobileNotifications.shared.reconcilePrompts(
+        scope,
+        pendingInteractions.keys,
+      );
     }
   }
 
@@ -2066,14 +2075,13 @@ class _ChatPageState extends State<ChatPage> {
         stored != null &&
         !busy &&
         !hydrating &&
-        (widget.gateway.canonical
-            ? _historyRowMutable(row)
-            : runtime != null);
+        (widget.gateway.canonical ? _historyRowMutable(row) : runtime != null);
     final mayRewrite =
         idleForRewrite && rewrite == null && readingWindow == history;
     final rewriteRows = mayRewrite ? _rewriteRows(history) : const <ChatRow>[];
     final position = _findRewriteRow(rewriteRows, row);
-    final edit = mayRewrite &&
+    final edit =
+        mayRewrite &&
         row.user &&
         position >= 0 &&
         _historyRowMutable(rewriteRows[position]);
@@ -2458,9 +2466,8 @@ class _ChatPageState extends State<ChatPage> {
           receipt['status'] == 'queued' &&
           sameConnection() &&
           widget.keyboardActive) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('消息已加入网关队列'))),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(context.tr('消息已加入网关队列'))));
       }
       if (receipt['execution_generation'] case final int admittedGeneration
           when canonical &&
@@ -2605,133 +2612,12 @@ class _ChatPageState extends State<ChatPage> {
     final colors = Theme.of(context).colorScheme;
     final chrome =
         CustomThemeTokens.read(context, ThemeColor.chrome) ?? colors.surface;
-    final libraryLabel = context.tr(switch (widget.libraryDocked) {
-      true => '隐藏会话侧栏',
-      false => '显示会话侧栏',
-      null => '会话列表',
-    });
-    final unread = widget.unreadConversations;
     final screen = Scaffold(
       resizeToAvoidBottomInset: currentRoute,
-      appBar: AppBar(
-        bottom: compactComposer || widget.tabStrip == null
-            ? null
-            : PreferredSize(
-                preferredSize: const Size.fromHeight(48),
-                child: widget.tabStrip!,
-              ),
-        toolbarHeight: compactComposer ? 54 : 64,
-        backgroundColor: chrome,
-        centerTitle: false,
-        titleSpacing: 5,
-        leadingWidth: 60,
-        leading: Center(
-          child: _ToolbarSurface(
-            children: [
-              _ChromeButton(
-                icon: widget.libraryDocked == null
-                    ? Icons.menu_rounded
-                    : Icons.view_sidebar_outlined,
-                label: unread == 0
-                    ? libraryLabel
-                    : '$libraryLabel · ${context.strings.format('{count} 个最近会话未读', {'count': unread})}',
-                badge: unread,
-                tap: canBrowseChat ? widget.onLibrary : null,
-              ),
-            ],
-          ),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            buildConversationTitle(chrome),
-            const SizedBox(height: 2),
-            Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    widget.profileLabel ??
-                        context.strings.profileName(widget.profile),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                ),
-                ContextMeterLabel(value: contextMeter),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: _ToolbarSurface(
-              children: [
-                _ChromeButton(
-                  icon: Icons.search_rounded,
-                  label: context.tr('快捷入口'),
-                  tap: canBrowseChat ? openQuickAccess : null,
-                ),
-                _ChromeButton(
-                  icon: Icons.folder_open_outlined,
-                  label: context.tr(hasWorkspace ? '工作区' : '会话文件'),
-                  tap: !canBrowseChat
-                      ? null
-                      : hasWorkspace
-                      ? openWorkspace
-                      : transcriptSession == null
-                      ? null
-                      : () => openWorkspace(
-                          section: WorkspaceSection.conversationFiles,
-                        ),
-                ),
-                Semantics(
-                  container: true,
-                  child: PopupMenuButton<_ChatMenu>(
-                    enabled: canBrowseChat,
-                    tooltip: context.tr('会话选项'),
-                    icon: const Icon(Icons.more_horiz_rounded, size: 21),
-                    onSelected: (action) {
-                      switch (action) {
-                        case _ChatMenu.rename:
-                          runConversationAction(SessionMenuAction.rename);
-                        case _ChatMenu.export:
-                          runConversationAction(SessionMenuAction.export);
-                        case _ChatMenu.find:
-                          exploreTranscript();
-                        case _ChatMenu.conversationFiles:
-                          openWorkspace(
-                            section: WorkspaceSection.conversationFiles,
-                          );
-                        case _ChatMenu.newChat:
-                          widget.onNew();
-                        case _ChatMenu.tabs:
-                          draftFocus.unfocus();
-                          widget.onShowTabs?.call();
-                        case _ChatMenu.activity:
-                          openSessionActivity();
-                        case _ChatMenu.status:
-                          openSessionStatus();
-                        case _ChatMenu.gateway:
-                          openGatewayStatus();
-                        case _ChatMenu.busyInput:
-                          openBusyInputSettings();
-                        case _ChatMenu.voiceEngine:
-                          openVoiceEngine();
-                        case _ChatMenu.wake:
-                          widget.onWakeSettings?.call();
-                        case _ChatMenu.reload:
-                          reloadConversation();
-                      }
-                    },
-                    itemBuilder: buildConversationMenu,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      appBar: buildChatAppBar(
+        compact: compactComposer,
+        chrome: chrome,
+        colors: colors,
       ),
       backgroundColor: colors.surface,
       body: ConversationCanvas(
@@ -2922,295 +2808,9 @@ class _ChatPageState extends State<ChatPage> {
                                 ),
                               ),
                             ReferenceSuggestions(references: references),
-                            Container(
-                              key: fileDrop.key,
-                              margin: EdgeInsets.fromLTRB(
-                                18,
-                                compactComposer ? 2 : 6,
-                                18,
-                                compactComposer ? 3 : 10,
-                              ),
-                              padding: const EdgeInsets.fromLTRB(7, 5, 7, 5),
-                              decoration: BoxDecoration(
-                                color:
-                                    CustomThemeTokens.read(
-                                      context,
-                                      ThemeColor.composer,
-                                    ) ??
-                                    colors.surface,
-                                borderRadius: BorderRadius.circular(23),
-                                border: Border.all(
-                                  color: fileDrop.hovering
-                                      ? colors.primary
-                                      : colors.outlineVariant,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (composerBusy)
-                                    const LinearProgressIndicator(minHeight: 2),
-                                  ValueListenableBuilder<_ComposerUpload?>(
-                                    valueListenable: uploadProgress,
-                                    builder: (context, update, _) =>
-                                        update == null
-                                        ? const SizedBox.shrink()
-                                        : _ComposerUploadStatus(
-                                            update: update,
-                                            cancelling:
-                                                uploadControl?.cancelled ==
-                                                true,
-                                            onCancel: cancelUpload,
-                                          ),
-                                  ),
-                                  if (workspaceDir case final path?
-                                      when path.isNotEmpty && !compactComposer)
-                                    _ComposerWorkspaceBar(
-                                      path: path,
-                                      branch: workspaceBranch,
-                                      onBrowse: gatewayReady && !busy
-                                          ? openWorkspace
-                                          : null,
-                                      onReview: gatewayReady && !busy
-                                          ? () => openWorkspace(
-                                              section: WorkspaceSection.review,
-                                            )
-                                          : null,
-                                    ),
-                                  if (!readOnly && !busy && gatewayReady)
-                                    ValueListenableBuilder(
-                                      valueListenable: draft,
-                                      builder: (context, value, _) {
-                                        final text = value.text.trimLeft();
-                                        if (!text.startsWith('/') ||
-                                            (text != '/' &&
-                                                parseSlashInput(text) ==
-                                                    null)) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        return Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            7,
-                                            3,
-                                            5,
-                                            0,
-                                          ),
-                                          child: TextButton.icon(
-                                            onPressed: slashPending
-                                                ? null
-                                                : openCommands,
-                                            icon: const Icon(
-                                              Icons.terminal_rounded,
-                                              size: 16,
-                                            ),
-                                            label: Text(context.tr('命令与技能')),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  if (files.isNotEmpty)
-                                    SizedBox(
-                                      height: 48,
-                                      child: ListView.separated(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                        ),
-                                        scrollDirection: Axis.horizontal,
-                                        itemCount: files.length,
-                                        separatorBuilder: (_, _) =>
-                                            const SizedBox(width: 6),
-                                        itemBuilder: (context, index) {
-                                          final file = files[index];
-                                          return Center(
-                                            child: InputChip(
-                                              onPressed:
-                                                  canRemoveDraftAttachments
-                                                  ? () => openComposerFile(
-                                                      file,
-                                                      context,
-                                                    )
-                                                  : null,
-                                              avatar: const Icon(
-                                                Icons
-                                                    .insert_drive_file_outlined,
-                                                size: 16,
-                                              ),
-                                              label: ConstrainedBox(
-                                                constraints:
-                                                    const BoxConstraints(
-                                                      maxWidth: 175,
-                                                    ),
-                                                child: Text(
-                                                  file.name,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              onDeleted:
-                                                  canRemoveDraftAttachments
-                                                  ? () =>
-                                                        removeSelectedComposerFile(
-                                                          file,
-                                                          photo: false,
-                                                        )
-                                                  : null,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  if (pictures.isNotEmpty)
-                                    buildComposerPictures(),
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      12,
-                                      2,
-                                      12,
-                                      0,
-                                    ),
-                                    child: Focus(
-                                      canRequestFocus: false,
-                                      skipTraversal: true,
-                                      onKeyEvent: handleComposerKey,
-                                      child: TextField(
-                                        controller: draft,
-                                        focusNode: draftFocus,
-                                        readOnly: !canEditDraft,
-                                        contextMenuBuilder: composerContextMenu,
-                                        contentInsertionConfiguration:
-                                            composerStore != null &&
-                                                widget.keyboardActive &&
-                                                !readOnly
-                                            ? ContentInsertionConfiguration(
-                                                onContentInserted:
-                                                    insertKeyboardImage,
-                                              )
-                                            : null,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyLarge,
-                                        minLines: 1,
-                                        maxLines: compactComposer ? 2 : 5,
-                                        decoration: InputDecoration(
-                                          hintText: context.tr('输入消息…'),
-                                          filled: false,
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.symmetric(
-                                            vertical: 10,
-                                          ),
-                                          border: InputBorder.none,
-                                          enabledBorder: InputBorder.none,
-                                          focusedBorder: InputBorder.none,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        onPressed:
-                                            !gatewayReady ||
-                                                busy ||
-                                                composerBusy ||
-                                                slashPending ||
-                                                readOnly
-                                            ? null
-                                            : pick,
-                                        tooltip: context.tr('添加附件与命令'),
-                                        icon: const Icon(
-                                          Icons.add_rounded,
-                                          size: 21,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: readOnly
-                                              ? null
-                                              : ModelControl(
-                                                  model:
-                                                      deferredModel?.id ??
-                                                      currentModel,
-                                                  effort:
-                                                      deferredEffort ?? effort,
-                                                  speed: speed,
-                                                  status: modelStatus,
-                                                  deferred:
-                                                      deferredModel != null ||
-                                                      deferredEffort != null,
-                                                  onPressed:
-                                                      !canChangeModel ||
-                                                          slashPending ||
-                                                          modelStatus != null
-                                                      ? null
-                                                      : pickModel,
-                                                ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 3),
-                                      if (!readOnly) voiceButtons(colors),
-                                      if (running)
-                                        IconButton(
-                                          onPressed: gatewayReady && !stopping
-                                              ? stop
-                                              : null,
-                                          tooltip: context.tr('停止回复'),
-                                          icon: const Icon(
-                                            Icons.stop_rounded,
-                                            size: 20,
-                                          ),
-                                        ),
-                                      ValueListenableBuilder(
-                                        valueListenable: draft,
-                                        builder: (context, value, _) {
-                                          final text = value.text.trim();
-                                          final attached =
-                                              pictures.isNotEmpty ||
-                                              files.isNotEmpty;
-                                          final queue =
-                                              queuesDraft &&
-                                              !canSendBusyText(
-                                                text,
-                                                hasAttachments: attached,
-                                              );
-                                          return IconButton.filled(
-                                            onPressed:
-                                                _composing(value) ||
-                                                    !gatewayReady ||
-                                                    unconfirmedSend != null ||
-                                                    busy ||
-                                                    composerBusy ||
-                                                    slashPending ||
-                                                    readOnly ||
-                                                    rewrite != null ||
-                                                    modelStatus != null ||
-                                                    hydrating ||
-                                                    widget.id != null &&
-                                                        runtime == null ||
-                                                    text.isEmpty && !attached
-                                                ? null
-                                                : send,
-                                            tooltip: context.tr(
-                                              queue ? '加入队列' : '发送',
-                                            ),
-                                            style: IconButton.styleFrom(
-                                              minimumSize: const Size(40, 40),
-                                              shape: const CircleBorder(),
-                                            ),
-                                            icon: Icon(
-                                              queue
-                                                  ? Icons.playlist_add_rounded
-                                                  : Icons.arrow_upward_rounded,
-                                              size: 20,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                            buildComposer(
+                              compact: compactComposer,
+                              colors: colors,
                             ),
                           ],
                         ),
@@ -3252,19 +2852,6 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
-}
-
-class _ToolbarSurface extends StatelessWidget {
-  const _ToolbarSurface({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.surfaceContainerLow,
-    shape: const StadiumBorder(),
-    child: Row(mainAxisSize: MainAxisSize.min, children: children),
-  );
 }
 
 class _ChromeButton extends StatelessWidget {

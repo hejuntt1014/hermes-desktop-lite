@@ -59,7 +59,7 @@ class SessionTaskSnapshot {
   }
 }
 
-class SessionTasks extends StatelessWidget {
+class SessionTasks extends StatefulWidget {
   const SessionTasks({
     super.key,
     required this.snapshot,
@@ -67,62 +67,127 @@ class SessionTasks extends StatelessWidget {
   });
   final SessionTaskSnapshot snapshot;
   final bool running;
+
+  @override
+  State<SessionTasks> createState() => _SessionTasksState();
+}
+
+class _SessionTasksState extends State<SessionTasks> {
+  bool open = false;
+
   @override
   Widget build(BuildContext context) {
     final c = Theme.of(context).colorScheme;
-    final done = snapshot.tasks
-        .where((row) => row['status'] == 'completed')
-        .length;
+    final tasks = widget.snapshot.tasks;
+    final done = tasks.where((row) => row['status'] == 'completed').length;
+    final current = tasks
+        .where((row) => row['status'] == 'in_progress')
+        .map((row) => row['content'])
+        .whereType<String>()
+        .firstOrNull;
+    final label = widget.running ? '当前任务' : '以往任务';
+    final style = Theme.of(context).textTheme.labelMedium;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 0),
       child: Material(
         color: c.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
-        child: ExpansionTile(
-          dense: true,
-          shape: const Border(),
-          collapsedShape: const Border(),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          leading: const Icon(Icons.checklist_rounded, size: 18),
-          title: Text(
-            '${running ? context.tr('当前任务') : context.tr('以往任务')} $done/${snapshot.tasks.length}',
-            style: const TextStyle(fontSize: 13),
-          ),
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: ListView.builder(
-                primary: false,
-                shrinkWrap: true,
-                itemCount: snapshot.tasks.length,
-                itemBuilder: (context, index) {
-                  final row = snapshot.tasks[index];
-                  final status = row['status'];
-                  final icon = switch (status) {
-                    'completed' => Icons.check_circle_rounded,
-                    'cancelled' => Icons.remove_circle_outline,
-                    'in_progress' => Icons.timelapse_rounded,
-                    _ => Icons.radio_button_unchecked,
-                  };
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      icon,
-                      size: 16,
-                      color: status == 'completed'
-                          ? c.primary
-                          : c.onSurfaceVariant,
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.bottomCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (open)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: ListView.builder(
+                    primary: false,
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(top: 6),
+                    itemCount: tasks.length,
+                    itemBuilder: (context, index) {
+                      final row = tasks[index];
+                      final status = row['status'];
+                      final icon = switch (status) {
+                        'completed' => Icons.check_circle_rounded,
+                        'cancelled' => Icons.remove_circle_outline,
+                        'in_progress' => Icons.timelapse_rounded,
+                        _ => Icons.radio_button_unchecked,
+                      };
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: Icon(
+                          icon,
+                          size: 16,
+                          color: status == 'completed'
+                              ? c.primary
+                              : c.onSurfaceVariant,
+                        ),
+                        minLeadingWidth: 16,
+                        title: Text(
+                          row['content'] as String,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: status == 'completed'
+                                ? c.onSurfaceVariant
+                                : c.onSurface,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              InkWell(
+                onTap: () => setState(() => open = !open),
+                child: SizedBox(
+                  height: 36,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(
+                            value: tasks.isEmpty ? 0 : done / tasks.length,
+                            strokeWidth: 2.4,
+                            backgroundColor: c.outlineVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 9),
+                        Text(
+                          '${context.tr(label)} $done/${tasks.length}',
+                          style: style?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        if (current != null && !open) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              current,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: style?.copyWith(color: c.onSurfaceVariant),
+                            ),
+                          ),
+                        ] else
+                          const Spacer(),
+                        Icon(
+                          open
+                              ? Icons.keyboard_arrow_down_rounded
+                              : Icons.keyboard_arrow_up_rounded,
+                          size: 18,
+                          color: c.onSurfaceVariant,
+                        ),
+                      ],
                     ),
-                    title: Text(
-                      row['content'] as String,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
