@@ -266,7 +266,7 @@ import UserNotifications
       }
     case "settings":
       let settings: String
-      if #available(iOS 15.4, *) {
+      if #available(iOS 16.0, *) {
         settings = UIApplication.openNotificationSettingsURLString
       } else {
         settings = UIApplication.openSettingsURLString
