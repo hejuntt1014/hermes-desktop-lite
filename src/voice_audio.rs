@@ -10,8 +10,60 @@ use tokio::sync::{mpsc, watch};
 use crate::i18n::text as tr;
 use crate::voice::{InputControl, Meter};
 
+/// Keeps an audio stream alive on a thread of its own until dropped. CoreAudio
+/// streams are not `Send`, so holding one directly across an `.await` keeps the
+/// voice tasks from compiling on macOS.
+struct StreamThread {
+    _stop: std::sync::mpsc::Sender<()>,
+}
+
+impl StreamThread {
+    fn spawn<S: 'static, T: Send + 'static>(
+        open: impl FnOnce() -> Result<(S, T)> + Send + 'static,
+    ) -> Result<(Self, T)> {
+        let (ready, opened) = std::sync::mpsc::sync_channel(1);
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        std::thread::Builder::new()
+            .name("hermes-audio".into())
+            .spawn(move || match open() {
+                Ok((stream, value)) => {
+                    if ready.send(Ok(value)).is_ok() {
+                        // Returns once the `StreamThread` (the only sender) is dropped.
+                        let _ = stopped.recv();
+                    }
+                    drop(stream);
+                }
+                Err(error) => {
+                    let _ = ready.send(Err(error));
+                }
+            })?;
+        let value = opened.recv().context("Audio thread exited")??;
+        Ok((Self { _stop: stop }, value))
+    }
+}
+
+/// The default output device, playing whatever is appended to `sink`.
+pub struct Speaker {
+    _stream: StreamThread,
+    pub sink: rodio::Sink,
+}
+
+impl Speaker {
+    pub fn open() -> Result<Self> {
+        let (stream, sink) = StreamThread::spawn(|| {
+            let stream = rodio::OutputStreamBuilder::open_default_stream()?;
+            let sink = rodio::Sink::connect_new(stream.mixer());
+            Ok((stream, sink))
+        })?;
+        Ok(Self {
+            _stream: stream,
+            sink,
+        })
+    }
+}
+
 pub struct Microphone {
-    _stream: Stream,
+    _stream: StreamThread,
     frames: mpsc::Receiver<Vec<f32>>,
     errors: mpsc::UnboundedReceiver<cpal::StreamError>,
     source_rate: u32,
@@ -21,33 +73,36 @@ pub struct Microphone {
 
 impl Microphone {
     pub fn open(target_rate: u32) -> Result<Self> {
-        let device = cpal::default_host()
-            .default_input_device()
-            .context(tr("找不到麦克风"))?;
-        let supported = device.default_input_config()?;
-        let config = supported.config();
-        let (send, frames) = mpsc::channel(32);
-        let (report_error, errors) = mpsc::unbounded_channel();
-        let stream = match supported.sample_format() {
-            SampleFormat::F32 => input::<f32>(&device, &config, send, report_error),
-            SampleFormat::F64 => input::<f64>(&device, &config, send, report_error),
-            SampleFormat::I8 => input::<i8>(&device, &config, send, report_error),
-            SampleFormat::I16 => input::<i16>(&device, &config, send, report_error),
-            SampleFormat::I24 => input::<cpal::I24>(&device, &config, send, report_error),
-            SampleFormat::I32 => input::<i32>(&device, &config, send, report_error),
-            SampleFormat::I64 => input::<i64>(&device, &config, send, report_error),
-            SampleFormat::U8 => input::<u8>(&device, &config, send, report_error),
-            SampleFormat::U16 => input::<u16>(&device, &config, send, report_error),
-            SampleFormat::U32 => input::<u32>(&device, &config, send, report_error),
-            SampleFormat::U64 => input::<u64>(&device, &config, send, report_error),
-            _ => bail!("{}", tr("麦克风的音频格式不受支持")),
-        }?;
-        stream.play()?;
+        let (stream, (frames, errors, source_rate)) = StreamThread::spawn(|| {
+            let device = cpal::default_host()
+                .default_input_device()
+                .context(tr("找不到麦克风"))?;
+            let supported = device.default_input_config()?;
+            let config = supported.config();
+            let (send, frames) = mpsc::channel(32);
+            let (report_error, errors) = mpsc::unbounded_channel();
+            let stream = match supported.sample_format() {
+                SampleFormat::F32 => input::<f32>(&device, &config, send, report_error),
+                SampleFormat::F64 => input::<f64>(&device, &config, send, report_error),
+                SampleFormat::I8 => input::<i8>(&device, &config, send, report_error),
+                SampleFormat::I16 => input::<i16>(&device, &config, send, report_error),
+                SampleFormat::I24 => input::<cpal::I24>(&device, &config, send, report_error),
+                SampleFormat::I32 => input::<i32>(&device, &config, send, report_error),
+                SampleFormat::I64 => input::<i64>(&device, &config, send, report_error),
+                SampleFormat::U8 => input::<u8>(&device, &config, send, report_error),
+                SampleFormat::U16 => input::<u16>(&device, &config, send, report_error),
+                SampleFormat::U32 => input::<u32>(&device, &config, send, report_error),
+                SampleFormat::U64 => input::<u64>(&device, &config, send, report_error),
+                _ => bail!("{}", tr("麦克风的音频格式不受支持")),
+            }?;
+            stream.play()?;
+            Ok((stream, (frames, errors, config.sample_rate.0)))
+        })?;
         Ok(Self {
             _stream: stream,
             frames,
             errors,
-            source_rate: config.sample_rate.0,
+            source_rate,
             target_rate,
             phase: 0,
         })
@@ -204,8 +259,8 @@ pub async fn record_until<T>(
 }
 
 pub async fn play(bytes: Vec<u8>) -> Result<()> {
-    let stream = rodio::OutputStreamBuilder::open_default_stream()?;
-    let output = rodio::Sink::connect_new(stream.mixer());
+    let speaker = Speaker::open()?;
+    let output = &speaker.sink;
     if bytes.starts_with(b"OggS") && bytes.get(28..36) == Some(b"OpusHead") {
         let pcm = decode_ogg_opus(&bytes)?;
         output.append(rodio::buffer::SamplesBuffer::new(1, 48_000, pcm));

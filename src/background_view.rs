@@ -15,7 +15,7 @@ use crate::{
     media::{read_local_image, render_encoded_image},
     settings::{BackgroundPreferences, DisplayPreferences},
     theme_package::{self, InstalledTheme, Manifest, Wallpaper},
-    wallpapers::{self, Builtin, Source as WallpaperSource, Tile},
+    wallpapers::{self, Source as WallpaperSource, Tile},
 };
 
 use super::{
@@ -190,7 +190,7 @@ impl Desktop {
                     .as_ref()
                     == Some(path)
             {
-                WallpaperSource::Builtin(Builtin::BlueHour)
+                WallpaperSource::Builtin(wallpapers::Builtin::BlueHour)
             } else {
                 source
             };

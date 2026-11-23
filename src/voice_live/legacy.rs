@@ -35,7 +35,7 @@ use webrtc::{
 use crate::{
     i18n::text as tr,
     voice::{Event, Meter, Phase},
-    voice_audio::Microphone,
+    voice_audio::{Microphone, Speaker},
 };
 
 const RATE: u32 = 48_000;
@@ -82,9 +82,8 @@ impl Peer {
         let input = call.input.clone();
         let peer = &self.0;
         let mut mic = Microphone::open(RATE).context(tr("无法打开麦克风"))?;
-        let stream =
-            rodio::OutputStreamBuilder::open_default_stream().context(tr("无法播放语音"))?;
-        let sink = rodio::Sink::connect_new(stream.mixer());
+        let speaker = Speaker::open().context(tr("无法播放语音"))?;
+        let sink = &speaker.sink;
         let playback = Arc::new(Mutex::new(VecDeque::new()));
         sink.append(ContinuousAudio {
             queue: playback.clone(),
